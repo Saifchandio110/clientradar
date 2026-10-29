@@ -1,29 +1,6 @@
-// DEMO DATA ONLY: fictional posts for previewing the layout. Replaced by real data in Phase 3/4.
-const DEMO = [
-  { id: 1, author: "Demo Person A", handle: "demo-a.example", category: "Character art", intent: "high", score: 9, hours: 1, read: false, saved: false,
-    text: "DEMO: Looking to commission a digital artist to draw my OC. Budget is flexible!",
-    reasons: ["looking to commission (+5)", "digital artist (+2)", "budget mentioned (+2)"] },
-  { id: 2, author: "Demo Person B", handle: "demo-b.example", category: "Logo and branding", intent: "high", score: 8, hours: 5, read: false, saved: true,
-    text: "DEMO: Need someone to design a logo for my new bakery. Paid work.",
-    reasons: ["need someone to design (+4)", "logo (+2)", "paid work (+2)"] },
-  { id: 3, author: "Demo Person C", handle: "demo-c.example", category: "Illustration", intent: "medium", score: 5, hours: 30, read: true, saved: false,
-    text: "DEMO: Can anyone recommend an illustrator for a children's book?",
-    reasons: ["asking for recommendations (+3)", "illustrator (+2)"] },
-  { id: 4, author: "Demo Person D", handle: "demo-d.example", category: "Book cover", intent: "medium", score: 4, hours: 52, read: false, saved: false,
-    text: "DEMO: Thinking about getting a cover made for my novel. Any ideas?",
-    reasons: ["specific need (+3)", "cover (+1)"] },
-  { id: 5, author: "Demo Person E", handle: "demo-e.example", category: "Illustration", intent: "low", score: 2, hours: 100, read: false, saved: false,
-    text: "DEMO: I love commissioning artists, so many talented people here.",
-    reasons: ["mentions commissions (+2)", "no clear request (0)"] },
-  { id: 6, author: "Demo Person F", handle: "demo-f.example", category: "Graphic design", intent: "high", score: 7, hours: 200, read: true, saved: false,
-    text: "DEMO: Looking for a graphic designer for my business, please share portfolios.",
-    reasons: ["looking for a graphic designer (+5)", "business (+2)"] }
-];
-const CATS = ["All categories", "Character art", "Illustration", "Logo and branding", "Book cover", "Graphic design"];
-const KEYWORDS = ["looking to commission", "need an artist", "looking for an illustrator", "can anyone recommend an artist", "need someone to design", "looking for a graphic designer", "need a book cover illustrator"];
-const EXCLUDED = ["commissions open", "open for commissions", "dm me for prices", "tutorial"];
-
+const CATS = ["All categories", "Character art", "Illustration", "Logo and branding", "Book cover", "Graphic design", "Other"];
 const $ = (s) => document.querySelector(s);
+
 function h(tag, props, ...kids) {
   const e = document.createElement(tag);
   for (const [k, v] of Object.entries(props || {})) {
@@ -34,71 +11,146 @@ function h(tag, props, ...kids) {
   for (const k of kids.flat()) e.append(k);
   return e;
 }
-function ago(hours) {
-  if (hours < 1) return "just now";
-  if (hours < 24) return Math.round(hours) + "h ago";
-  return Math.floor(hours / 24) + "d ago";
+function msg(t) { $("#msg").textContent = t || ""; }
+function ago(iso) {
+  const m = (Date.now() - Date.parse(iso)) / 60000;
+  if (!Number.isFinite(m)) return "unknown";
+  if (m < 1) return "just now";
+  if (m < 60) return Math.round(m) + "m ago";
+  if (m < 1440) return Math.round(m / 60) + "h ago";
+  return Math.floor(m / 1440) + "d ago";
 }
 
-function renderStats() {
-  const stats = [
-    ["Total detected", DEMO.length],
-    ["New", DEMO.filter((p) => !p.read).length],
-    ["High intent", DEMO.filter((p) => p.intent === "high").length],
-    ["Saved", DEMO.filter((p) => p.saved).length],
-    ["Last scan", "Never"],
-    ["Scanner", "Not running"]
-  ];
-  const box = $("#stats");
-  box.replaceChildren(...stats.map(([label, value]) =>
-    h("div", { class: "stat" }, h("b", {}, String(value)), h("span", {}, label))));
+async function api(path, opts) {
+  const o = opts || {};
+  const t = localStorage.getItem("cr_token") || "";
+  if (!t) throw new Error("Open Settings and save your admin token first.");
+  const headers = { "x-admin-token": t };
+  if (o.body) headers["content-type"] = "application/json";
+  const res = await fetch(path, { method: o.method || "GET", headers: headers, body: o.body ? JSON.stringify(o.body) : undefined });
+  let data = null;
+  try { data = await res.json(); } catch (e) {}
+  if (!res.ok) throw new Error((data && data.error) || "HTTP " + res.status);
+  return data;
 }
 
-function visible(p) {
-  const intent = $("#f-intent").value, cat = $("#f-cat").value, st = $("#f-status").value, d = $("#f-date").value;
-  if (intent !== "all" && p.intent !== intent) return false;
-  if (cat !== CATS[0] && p.category !== cat) return false;
-  if (st === "new" && p.read) return false;
-  if (st === "read" && !p.read) return false;
-  if (st === "saved" && !p.saved) return false;
-  if (d !== "all" && p.hours > Number(d)) return false;
-  return true;
+async function loadDashboard() {
+  try {
+    const d = await api("/api/stats");
+    const ok = d.lastSuccessfulScan, bad = d.lastFailedScan;
+    const failedLast = bad && (!ok || bad.id > ok.id);
+    const tiles = [
+      ["Total detected", d.counts.total], ["New", d.counts.unread],
+      ["High intent", d.counts.high], ["Saved", d.counts.saved],
+      ["Last successful scan", ok ? ago(ok.finished_at) : "Never"],
+      ["Scanner", failedLast ? "Last scan failed" : (ok ? "Healthy" : "No scans yet")]
+    ];
+    $("#stats").replaceChildren(...tiles.map((t) => h("div", { class: "stat" }, h("b", {}, String(t[1])), h("span", {}, t[0]))));
+    $("#scanner").textContent = failedLast
+      ? "Last failure: " + (bad.error || "unknown")
+      : (ok ? "Last scan checked " + ok.posts_seen + " posts and saved " + ok.new_matches + " new matches." : "No scans yet. Tap Scan now.");
+    msg("");
+  } catch (e) { msg(e.message); }
 }
 
-function renderFeed() {
-  const list = DEMO.filter(visible);
+async function loadFeed() {
+  const q = new URLSearchParams();
+  if ($("#f-intent").value !== "all") q.set("intent", $("#f-intent").value);
+  if ($("#f-cat").value !== CATS[0]) q.set("category", $("#f-cat").value);
+  if ($("#f-status").value !== "all") q.set("status", $("#f-status").value);
+  if ($("#f-date").value !== "all") q.set("hours", $("#f-date").value);
+  try {
+    const d = await api("/api/posts?" + q.toString());
+    renderFeed(d.posts);
+    msg("");
+  } catch (e) { msg(e.message); }
+}
+
+async function patch(id, body) {
+  try {
+    await api("/api/posts/" + id, { method: "PATCH", body: body });
+    await loadFeed();
+    loadDashboard();
+  } catch (e) { msg(e.message); }
+}
+
+function renderFeed(posts) {
   const box = $("#cards");
-  if (!list.length) { box.replaceChildren(h("p", { class: "muted" }, "No posts match these filters.")); return; }
-  box.replaceChildren(...list.map((p) =>
-    h("div", { class: "card" + (p.read ? "" : " unread") },
-      h("div", { class: "row" },
-        h("strong", {}, p.author), h("span", { class: "handle" }, "@" + p.handle)),
+  if (!posts.length) { box.replaceChildren(h("p", { class: "muted" }, "No posts match these filters yet.")); return; }
+  box.replaceChildren(...posts.map((p) =>
+    h("div", { class: "card" + (p.is_read ? "" : " unread") },
+      h("div", { class: "row" }, h("strong", {}, p.author_name || p.author_handle), h("span", { class: "handle" }, "@" + p.author_handle)),
       h("div", { class: "row" },
         h("span", { class: "badge " + p.intent }, p.intent.toUpperCase() + " " + p.score),
-        h("span", { class: "badge cat" }, p.category),
-        h("span", { class: "handle" }, "Detected " + ago(p.hours))),
+        h("span", { class: "badge cat" }, p.category || "Other"),
+        h("span", { class: "handle" }, "Detected " + ago(p.detected_at))),
       h("p", { class: "text" }, p.text),
       h("div", { class: "reasons" }, "Why: " + p.reasons.join(", ")),
       h("div", { class: "actions" },
-        h("a", { href: "https://bsky.app", target: "_blank", rel: "noopener noreferrer" }, "Open original (demo link)"),
-        h("button", { class: "alt", onclick: () => { p.saved = !p.saved; renderAll(); } }, p.saved ? "Unsave" : "Save"),
-        h("button", { class: "alt", onclick: () => { p.read = !p.read; renderAll(); } }, p.read ? "Mark unread" : "Mark read")))));
+        p.url ? h("a", { href: p.url, target: "_blank", rel: "noopener noreferrer" }, "Open original post") : "",
+        h("button", { class: "alt", onclick: () => patch(p.id, { is_saved: !p.is_saved }) }, p.is_saved ? "Unsave" : "Save"),
+        h("button", { class: "alt", onclick: () => patch(p.id, { is_read: !p.is_read }) }, p.is_read ? "Mark unread" : "Mark read")))));
 }
 
-function renderAll() { renderStats(); renderFeed(); }
+async function loadSettings() {
+  try {
+    const s = await api("/api/settings");
+    $("#kw").value = s.keywords.join("\n");
+    $("#ex").value = s.excluded.join("\n");
+    $("#min").value = s.min_score;
+    msg("");
+  } catch (e) { msg(e.message); }
+}
 
-// Setup
-$("#f-cat").replaceChildren(...CATS.map((c) => h("option", { value: c }, c)));
-for (const id of ["#f-intent", "#f-cat", "#f-status", "#f-date"]) $(id).addEventListener("change", renderFeed);
-$("#kw").value = KEYWORDS.join("\n");
-$("#ex").value = EXCLUDED.join("\n");
-$("#save-settings").addEventListener("click", () => {
-  $("#settings-msg").textContent = "Demo only: settings are not saved yet. Saving to the database comes in Phase 4.";
-});
-$("#perm").textContent = "Notification" in window ? Notification.permission : "not supported in this browser";
-document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => {
+async function loadActivity() {
+  try {
+    const d = await api("/api/activity");
+    if (!d.runs.length) { $("#runs").replaceChildren(h("p", { class: "muted" }, "No scans yet.")); return; }
+    $("#runs").replaceChildren(...d.runs.map((r) =>
+      h("div", { class: "card" },
+        h("div", { class: "row" },
+          h("span", { class: "badge " + (r.status === "ok" ? "high" : r.status === "error" ? "low" : "medium") }, r.status.toUpperCase()),
+          h("span", { class: "handle" }, ago(r.started_at))),
+        h("div", {}, "Searches: " + r.queries_run + " | Posts processed: " + r.posts_seen + " | New matches: " + r.new_matches),
+        r.error ? h("div", { class: "reasons" }, "Error: " + r.error) : "")));
+    msg("");
+  } catch (e) { msg(e.message); }
+}
+
+const LOADERS = { dashboard: loadDashboard, feed: loadFeed, settings: loadSettings, activity: loadActivity };
+function show(view) {
   document.querySelectorAll("nav button, .view").forEach((e) => e.classList.remove("active"));
-  b.classList.add("active");
-  $("#" + b.dataset.view).classList.add("active");
-}));
-renderAll();
+  document.querySelector('nav button[data-view="' + view + '"]').classList.add("active");
+  $("#" + view).classList.add("active");
+  LOADERS[view]();
+}
+
+$("#f-cat").replaceChildren(...CATS.map((c) => h("option", { value: c }, c)));
+for (const id of ["#f-intent", "#f-cat", "#f-status", "#f-date"]) $(id).addEventListener("change", loadFeed);
+document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => show(b.dataset.view)));
+$("#tok").value = localStorage.getItem("cr_token") || "";
+$("#perm").textContent = "Notification" in window ? Notification.permission : "not supported in this browser";
+
+$("#save-token").addEventListener("click", () => {
+  localStorage.setItem("cr_token", $("#tok").value.trim());
+  msg("Token saved on this phone.");
+  loadSettings();
+});
+$("#save-settings").addEventListener("click", async () => {
+  const lines = (id) => $(id).value.split("\n").map((x) => x.trim()).filter(Boolean);
+  try {
+    await api("/api/settings", { method: "PUT", body: { keywords: lines("#kw"), excluded: lines("#ex"), min_score: Number($("#min").value) } });
+    msg("Settings saved. They apply from the next scan.");
+  } catch (e) { msg(e.message); }
+});
+$("#scan-now").addEventListener("click", async () => {
+  msg("Scanning... this can take several seconds.");
+  try {
+    const r = await api("/api/scan", { method: "POST" });
+    msg(r.status === "ok" ? "Scan finished: " + r.newlySaved + " new matches." : "Scan failed: " + r.error);
+    loadDashboard();
+  } catch (e) { msg(e.message); }
+});
+
+if (localStorage.getItem("cr_token")) loadDashboard();
+else show("settings");
