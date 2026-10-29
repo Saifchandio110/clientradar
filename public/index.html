@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1020">
+<title>ClientRadar</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <h1>ClientRadar</h1>
+  <span class="badge demo">DEMO DATA</span>
+</header>
+<main>
+  <section id="dashboard" class="view active">
+    <div id="stats" class="grid"></div>
+    <div class="card"><h2>Scanner</h2><p id="scanner">Not connected yet (added in Phase 5).</p></div>
+  </section>
+
+  <section id="feed" class="view">
+    <div class="filters">
+      <select id="f-intent" aria-label="Intent">
+        <option value="all">All intents</option>
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+      </select>
+      <select id="f-cat" aria-label="Service category"></select>
+      <select id="f-status" aria-label="Status">
+        <option value="all">All posts</option>
+        <option value="new">New</option>
+        <option value="read">Read</option>
+        <option value="saved">Saved</option>
+      </select>
+      <select id="f-date" aria-label="Date range">
+        <option value="all">Any time</option>
+        <option value="24">Last 24 hours</option>
+        <option value="168">Last 7 days</option>
+      </select>
+    </div>
+    <div id="cards"></div>
+  </section>
+
+  <section id="settings" class="view">
+    <div class="card">
+      <h2>Search settings</h2>
+      <label for="kw">Keywords (one per line)</label>
+      <textarea id="kw" rows="6"></textarea>
+      <label for="ex">Excluded phrases (one per line)</label>
+      <textarea id="ex" rows="4"></textarea>
+      <label for="min">Minimum intent score</label>
+      <input id="min" type="number" min="0" max="20" value="4">
+      <button id="save-settings" class="btn">Save settings</button>
+      <p id="settings-msg" class="muted"></p>
+    </div>
+    <div class="card">
+      <h2>Notifications</h2>
+      <p>Permission: <strong id="perm"></strong></p>
+      <button class="btn" disabled>Send test notification (Phase 6)</button>
+    </div>
+  </section>
+
+  <section id="activity" class="view">
+    <div class="card">
+      <h2>Activity and errors</h2>
+      <p class="muted">No scans have run yet. Scan history, processed posts, new matches and API errors will appear here once scanning is built (Phase 5).</p>
+    </div>
+  </section>
+</main>
+<nav>
+  <button data-view="dashboard" class="active">Dashboard</button>
+  <button data-view="feed">Feed</button>
+  <button data-view="settings">Settings</button>
+  <button data-view="activity">Activity</button>
+</nav>
+<script src="app.js"></script>
+</body>
+</html>
