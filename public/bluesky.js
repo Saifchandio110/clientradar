@@ -18,6 +18,7 @@ export function normalizePost(p) {
     author_handle: handle,
     author_name: (p.author && p.author.displayName) || "",
     text: p.record.text,
+        is_reply: !!p.record.reply,
     url: postUrl(p.uri, handle),
     created_at: p.record.createdAt || p.indexedAt || null,
     indexed_at: p.indexedAt || null
