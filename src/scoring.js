@@ -25,7 +25,10 @@ const POSITIVE = [
   { re: /(?:\b(?:paid|paying|budget|pay you)\b|[$£€]\s?\d)/i, w: 2, label: "mentions payment or budget" },
   { re: /\b(?:oc|ocs|character|fursona|vtuber|logo|book cover|cover art|profile picture|pfp|avatar|emotes?|mascot)\b/i, w: 1, label: "specific project type" }
 ];
-const NEGATIVE = [
+const NEGATIVE = [ 
+    { re: /\b(?:if|when) (?:anyone|someone|somebody)\b[^.!?\n]{0,25}\b(?:looking|needs?|wants?|hiring)\b/i, w: -12, label: "conditional or hypothetical, not a request" },
+  { re: /\blooking for (?:some |more )?(?:work|a job|jobs|clients|gigs|opportunities)\b/i, w: -12, label: "artist looking for work" },
+  { re: /\b(?:was|were|had been|ended up)\b[^.!?\n]{0,15}\b(?:looking|searching|hiring)\b/i, w: -8, label: "telling a past story" },
   { re: /\b(?:commissions? (?:are )?(?:open|closed)|open for commissions|taking commissions|accepting commissions|available for (?:hire|commissions?)|for hire|dm (?:me )?for (?:prices|rates|commissions?))\b/i, w: -8, label: "artist advertising services" },
   { re: /\b(?:commission|hire) (?:me|us)\b|\bmy (?:commissions?|shop|store|etsy|ko-?fi|patreon)\b|\bget in touch\b|\blink in bio\b|\bi made these\b/i, w: -8, label: "artist promoting their own work" },
   { re: /\b(?:not|never|no longer|stopped|(?:don|doesn|didn|isn|aren|wasn|won|can)(?:'|’)?t)\b[^.!?\n]{0,15}\b(?:looking|searching|hiring|seeking|need|want)\b/i, w: -12, label: "says they are NOT looking" },
