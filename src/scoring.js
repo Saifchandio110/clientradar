@@ -27,6 +27,10 @@ const POSITIVE = [
 const NEGATIVE = [
   { re: /\b(?:commissions? (?:are )?(?:open|closed)|open for commissions|taking commissions|accepting commissions|available for (?:hire|commissions?)|for hire|dm (?:me )?for (?:prices|rates|commissions?))\b/i, w: -8, label: "artist advertising services" },
   { re: /\b(?:commission|hire) (?:me|us)\b|\bmy (?:commissions?|shop|store|etsy|ko-?fi|patreon)\b|\bget in touch\b|\blink in bio\b|\bi made these\b/i, w: -8, label: "artist promoting their own work" },
+  { re: /\b(?:not|never|no longer|stopped|(?:don|doesn|didn|isn|aren|wasn|won|can)(?:'|’)?t)\b[^.!?\n]{0,15}\b(?:looking|searching|hiring|seeking|need|want)\b/i, w: -8, label: "says they are NOT looking" },
+  { re: /\b(?:are you|are u|you(?:'|’)?re|you are|if you|did you)\b[^.!?\n]{0,25}\b(?:looking|need|want|searching|hiring)\b/i, w: -8, label: "talking to someone else, not asking" },
+  { re: /\b(?:they|he|she|the company|the brand|the studio|the team)\b[^.!?\n]{0,30}\b(?:decided to|chose to|hired|commissioned)\b/i, w: -5, label: "about someone else's commission" },
+  { re: /\bi(?:'|’)?d be down\b|\bi can (?:draw|do|make|design)\b|\bi(?:'|’)?d love to (?:draw|design|do)\b|\bi(?:'|’)?m an? (?:artist|illustrator|designer)\b/i, w: -6, label: "offering their own help" },
   { re: /\bcommission (?:you|them|him|her|your|their|this|that)\b/i, w: -4, label: "talking about a specific artist" },
   { re: /\b(?:can(?:'|’)?t (?:afford|warrant)|cannot afford|someday|one day|wish i could|once the holidays|when i have (?:the )?money)\b/i, w: -3, label: "not ready to hire yet" },
   { re: /\b(?:tutorial|how to draw|speed ?paint|time-?lapse|art tips)\b/i, w: -4, label: "tutorial or process content" },
@@ -43,7 +47,7 @@ function detectCategory(t) {
 }
 
 // High needs a strong signal AND score 7+. Medium is 4+. Everything else is low.
-export function scorePost(text, cfg) {
+export function scorePost(text, cfg, meta) {
   const t = String(text || "");
   const lower = t.toLowerCase();
   for (const phrase of cfg.excluded) {
@@ -64,6 +68,7 @@ export function scorePost(text, cfg) {
   for (const r of NEGATIVE) {
     if (r.re.test(t)) { score += r.w; reasons.push(r.label + " (" + r.w + ")"); }
   }
+  if (meta && meta.is_reply) { score -= 5; reasons.push("reply to another post (-5)"); }
   let intent = "low";
   if (strong && score >= 7) intent = "high";
   else if (score >= 4) intent = "medium";
