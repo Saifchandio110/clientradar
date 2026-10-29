@@ -1,0 +1,62 @@
+export const DEFAULT_KEYWORDS = [
+  "looking to commission", "need an artist", "looking for an artist",
+  "looking for an illustrator", "can anyone recommend an artist",
+  "need someone to draw", "looking for a character designer",
+  "need an illustrator", "want to commission", "looking for a graphic designer",
+  "need a logo designer", "need a book cover", "custom profile picture",
+  "paid commission", "commission an artist"
+];
+export const DEFAULT_EXCLUDED = [
+  "commissions open", "open for commissions", "taking commissions",
+  "accepting commissions", "for hire", "dm for prices"
+];
+export const DEFAULT_MIN_SCORE = 3;
+
+// Scoring weights: edit the numbers here to tune the app.
+const POSITIVE = [
+  { re: /\b(?:looking|searching|hunting|seeking|wanting|want|need|needing|hiring)\b[^.!?\n]{0,25}\b(?:to commission|to hire|commission an?|commission some)/i, w: 5, label: "wants to commission or hire" },
+  { re: /\b(?:looking|searching|seeking|hiring|need|needing|want|wanting)\b[^.!?\n]{0,40}\b(?:artist|illustrator|designer|animator|cover artist)\b/i, w: 5, label: "looking for an artist or designer" },
+  { re: /\bwho (?:takes|does|is taking|is open for) commissions\b/i, w: 3, label: "asking who takes commissions" },
+  { re: /\b(?:can|could|does) (?:anyone|someone|somebody)\b[^.!?\n]{0,30}\b(?:recommend|suggest|draw|design|make)\b/i, w: 3, label: "asking for recommendations or help" },
+  { re: /\b(?:recommend(?:ations?)?|recs?|suggestions?)\b[^.!?\n]{0,40}\b(?:artist|illustrator|designer)\b/i, w: 3, label: "seeking recommendations" },
+  { re: /(?:\b(?:paid|paying|budget|pay you)\b|[$£€]\s?\d)/i, w: 2, label: "mentions payment or budget" },
+  { re: /\b(?:oc|ocs|character|fursona|vtuber|logo|book cover|cover art|profile picture|pfp|avatar|emotes?|mascot)\b/i, w: 1, label: "specific project type" }
+];
+const NEGATIVE = [
+  { re: /\b(?:commissions? (?:are )?(?:open|closed)|open for commissions|taking commissions|accepting commissions|available for (?:hire|commissions?)|for hire|dm (?:me )?for (?:prices|rates|commissions?))\b/i, w: -8, label: "artist advertising services" },
+  { re: /\b(?:tutorial|how to draw|speed ?paint|time-?lapse|art tips)\b/i, w: -4, label: "tutorial or process content" },
+  { re: /\b(?:i (?:just )?(?:drew|painted|finished)|here(?:'|’)?s my|my (?:latest|new) (?:art|drawing|piece))\b/i, w: -3, label: "sharing own artwork" }
+];
+
+function detectCategory(t) {
+  if (/book cover|cover art|novel cover|cover illustrator/.test(t)) return "Book cover";
+  if (/\blogo|branding|brand identity/.test(t)) return "Logo and branding";
+  if (/graphic design|flyer|poster|banner|business card/.test(t)) return "Graphic design";
+  if (/\b(?:oc|ocs|character|fursona|vtuber|pfp|profile picture|avatar|emotes?)\b/.test(t)) return "Character art";
+  if (/illustrat|artist|draw|commission/.test(t)) return "Illustration";
+  return "Other";
+}
+
+// High needs a strong "hire" signal AND score 7+. Medium is 4+. Everything else is low.
+export function scorePost(text, cfg) {
+  const t = String(text || "");
+  const lower = t.toLowerCase();
+  for (const phrase of cfg.excluded) {
+    if (phrase && lower.includes(String(phrase).toLowerCase())) {
+      return { skip: true, reason: "excluded phrase: " + phrase };
+    }
+  }
+  let score = 0;
+  let strong = false;
+  const reasons = [];
+  for (const r of POSITIVE) {
+    if (r.re.test(t)) { score += r.w; reasons.push(r.label + " (+" + r.w + ")"); if (r.w >= 5) strong = true; }
+  }
+  for (const r of NEGATIVE) {
+    if (r.re.test(t)) { score += r.w; reasons.push(r.label + " (" + r.w + ")"); }
+  }
+  let intent = "low";
+  if (strong && score >= 7) intent = "high";
+  else if (score >= 4) intent = "medium";
+  return { skip: false, score: score, intent: intent, reasons: reasons, category: detectCategory(lower) };
+}
