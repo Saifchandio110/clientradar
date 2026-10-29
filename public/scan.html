@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClientRadar: scan test</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header><h1>Scan test</h1><a href="index.html" class="handle">Back to app</a></header>
+<main>
+  <div class="card">
+    <label for="tok">Admin token</label>
+    <input id="tok" type="password" autocomplete="off">
+    <div class="actions">
+      <button id="scan" class="btn">Scan now</button>
+      <button id="stats" class="btn">Stats</button>
+      <button id="posts" class="btn">Stored posts</button>
+    </div>
+    <p id="status" class="muted">Ready.</p>
+  </div>
+  <div id="list"></div>
+  <pre id="out" class="muted" style="white-space:pre-wrap;word-break:break-word"></pre>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+$("#tok").value = localStorage.getItem("cr_token") || "";
+
+async function call(path, method) {
+  const token = $("#tok").value.trim();
+  if (!token) { $("#status").textContent = "Enter your admin token first."; return null; }
+  localStorage.setItem("cr_token", token);
+  $("#status").textContent = "Working...";
+  try {
+    const res = await fetch(path, { method: method, headers: { "x-admin-token": token } });
+    const data = await res.json();
+    $("#status").textContent = "HTTP " + res.status;
+    return data;
+  } catch (e) {
+    $("#status").textContent = "FAILED: could not reach the server.";
+    return null;
+  }
+}
+function show(data) { $("#out").textContent = JSON.stringify(data, null, 2); }
+
+$("#scan").addEventListener("click", async () => { $("#list").replaceChildren(); const d = await call("/api/scan", "POST"); if (d) show(d); });
+$("#stats").addEventListener("click", async () => { $("#list").replaceChildren(); const d = await call("/api/stats", "GET"); if (d) show(d); });
+$("#posts").addEventListener("click", async () => {
+  const d = await call("/api/posts?limit=20", "GET");
+  if (!d) return;
+  $("#out").textContent = "";
+  if (!d.posts) { show(d); return; }
+  $("#list").replaceChildren(...d.posts.map((p) => {
+    const c = document.createElement("div"); c.className = "card";
+    const head = document.createElement("div"); head.className = "row";
+    const b = document.createElement("span"); b.className = "badge " + p.intent; b.textContent = p.intent.toUpperCase() + " " + p.score;
+    const cat = document.createElement("span"); cat.className = "badge cat"; cat.textContent = p.category || "";
+    const who = document.createElement("span"); who.className = "handle"; who.textContent = "@" + p.author_handle;
+    head.append(b, cat, who);
+    const t = document.createElement("p"); t.className = "text"; t.textContent = p.text;
+    const w = document.createElement("div"); w.className = "reasons"; w.textContent = "Why: " + p.reasons.join(", ");
+    c.append(head, t, w);
+    if (p.url) {
+      const a = document.createElement("a"); a.href = p.url; a.target = "_blank"; a.rel = "noopener noreferrer"; a.textContent = "Open original post";
+      const act = document.createElement("div"); act.className = "actions"; act.append(a); c.append(act);
+    }
+    return c;
+  }));
+});
+</script>
+</body>
+</html>
