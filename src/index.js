@@ -1,6 +1,4 @@
-import { normalizePost } from "../public/bluesky.js";
-
-const PDS = "https://bsky.social/xrpc";
+import { runScan } from "./scan.js";
 
 function json(data, status) {
   return new Response(JSON.stringify(data), {
@@ -18,73 +16,61 @@ function safeEqual(a, b) {
   return d === 0;
 }
 
-// Log in with the app password. Returns { jwt } or { error }.
-async function login(env) {
-  let res;
-  try {
-    res = await fetch(PDS + "/com.atproto.server.createSession", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ identifier: env.BSKY_IDENTIFIER, password: env.BSKY_APP_PASSWORD })
-    });
-  } catch (e) {
-    return { error: "Could not reach Bluesky to log in.", status: 502 };
-  }
-  if (res.status === 401 || res.status === 400) {
-    return { error: "Bluesky login failed. Check BSKY_IDENTIFIER and BSKY_APP_PASSWORD.", status: 502 };
-  }
-  if (res.status === 429) return { error: "Bluesky login rate limited. Wait a few minutes.", status: 429 };
-  if (!res.ok) return { error: "Bluesky login returned HTTP " + res.status + ".", status: 502 };
-  const data = await res.json().catch(() => null);
-  if (!data || !data.accessJwt) return { error: "Bluesky login response was unexpected.", status: 502 };
-  return { jwt: data.accessJwt };
-}
-
-async function handleSearchTest(request, url, env) {
-  if (request.method !== "GET") return json({ error: "Method not allowed" }, 405);
-
-  const missing = ["ADMIN_TOKEN", "BSKY_IDENTIFIER", "BSKY_APP_PASSWORD"].filter((k) => !env[k]);
-  if (missing.length) return json({ error: "Server is missing secret(s): " + missing.join(", ") }, 500);
-
+function checkAdmin(request, env) {
+  if (!env.ADMIN_TOKEN) return json({ error: "Server is missing secret: ADMIN_TOKEN" }, 500);
+  if (!env.DB) return json({ error: "Database binding DB is missing." }, 500);
   const token = request.headers.get("x-admin-token") || "";
   if (!safeEqual(token, env.ADMIN_TOKEN)) return json({ error: "Wrong admin token." }, 401);
+  return null;
+}
 
-  const q = (url.searchParams.get("q") || "").trim();
-  const cursor = url.searchParams.get("cursor") || "";
-  if (q.length < 1 || q.length > 200) return json({ error: "Search phrase must be 1 to 200 characters." }, 400);
-  if (cursor.length > 500) return json({ error: "Invalid cursor." }, 400);
+async function stats(env) {
+  const db = env.DB;
+  const r = await db.batch([
+    db.prepare("SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END), 0) AS unread, COALESCE(SUM(CASE WHEN intent = 'high' THEN 1 ELSE 0 END), 0) AS high, COALESCE(SUM(is_saved), 0) AS saved FROM posts"),
+    db.prepare("SELECT * FROM scan_runs WHERE status = 'ok' ORDER BY id DESC LIMIT 1"),
+    db.prepare("SELECT * FROM scan_runs WHERE status = 'error' ORDER BY id DESC LIMIT 1")
+  ]);
+  return {
+    counts: r[0].results[0],
+    lastSuccessfulScan: r[1].results[0] || null,
+    lastFailedScan: r[2].results[0] || null
+  };
+}
 
-  const session = await login(env);
-  if (session.error) return json({ error: session.error }, session.status);
-
-  const u = new URL(PDS + "/app.bsky.feed.searchPosts");
-  u.searchParams.set("q", q);
-  u.searchParams.set("sort", "latest");
-  u.searchParams.set("limit", "25");
-  if (cursor) u.searchParams.set("cursor", cursor);
-
-  let res;
-  try {
-    res = await fetch(u.toString(), { headers: { authorization: "Bearer " + session.jwt } });
-  } catch (e) {
-    return json({ error: "Could not reach Bluesky search." }, 502);
-  }
-  if (res.status === 429) return json({ error: "Bluesky search rate limited. Retry later." }, 429);
-  if (!res.ok) return json({ error: "Bluesky search returned HTTP " + res.status + "." }, 502);
-
-  const data = await res.json().catch(() => null);
-  if (!data) return json({ error: "Bluesky search sent invalid JSON." }, 502);
-  const posts = (Array.isArray(data.posts) ? data.posts : []).map(normalizePost).filter(Boolean);
-  return json({ ok: true, posts: posts, cursor: data.cursor || null, hits: data.hitsTotal == null ? null : data.hitsTotal });
+async function listPosts(env, url) {
+  let limit = parseInt(url.searchParams.get("limit") || "20", 10);
+  if (!Number.isFinite(limit) || limit < 1) limit = 20;
+  if (limit > 50) limit = 50;
+  const { results } = await env.DB.prepare(
+    "SELECT id, uri, author_handle, author_name, text, url, created_at, detected_at, intent, score, category, reasons, is_read, is_saved FROM posts ORDER BY detected_at DESC, id DESC LIMIT ?1"
+  ).bind(limit).all();
+  return results.map((p) => {
+    let reasons = [];
+    try { reasons = JSON.parse(p.reasons); } catch (e) {}
+    return Object.assign({}, p, { reasons: reasons });
+  });
 }
 
 export default {
   async fetch(request, env) {
     try {
       const url = new URL(request.url);
-      if (url.pathname === "/api/search-test") return await handleSearchTest(request, url, env);
-      if (url.pathname.startsWith("/api/")) return json({ error: "Not found" }, 404);
-      return env.ASSETS.fetch(request);
+      const path = url.pathname;
+      if (!path.startsWith("/api/")) return env.ASSETS.fetch(request);
+
+      const denied = checkAdmin(request, env);
+      if (denied) return denied;
+
+      if (path === "/api/scan") {
+        if (request.method !== "POST") return json({ error: "Use POST." }, 405);
+        const missing = ["BSKY_IDENTIFIER", "BSKY_APP_PASSWORD"].filter((k) => !env[k]);
+        if (missing.length) return json({ error: "Server is missing secret(s): " + missing.join(", ") }, 500);
+        return json(await runScan(env));
+      }
+      if (path === "/api/stats" && request.method === "GET") return json(await stats(env));
+      if (path === "/api/posts" && request.method === "GET") return json({ posts: await listPosts(env, url) });
+      return json({ error: "Not found" }, 404);
     } catch (e) {
       return json({ error: "Unexpected server error." }, 500);
     }
