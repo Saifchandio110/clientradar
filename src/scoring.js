@@ -8,7 +8,8 @@ export const DEFAULT_KEYWORDS = [
 ];
 export const DEFAULT_EXCLUDED = [
   "commissions open", "open for commissions", "taking commissions",
-  "accepting commissions", "for hire", "dm for prices"
+  "accepting commissions", "for hire", "dm for prices",
+  "commissionsopen", "commission open", "commissions are open", "#artistsofbluesky"
 ];
 export const DEFAULT_MIN_SCORE = 4;
 
@@ -27,8 +28,10 @@ const POSITIVE = [
 const NEGATIVE = [
   { re: /\b(?:commissions? (?:are )?(?:open|closed)|open for commissions|taking commissions|accepting commissions|available for (?:hire|commissions?)|for hire|dm (?:me )?for (?:prices|rates|commissions?))\b/i, w: -8, label: "artist advertising services" },
   { re: /\b(?:commission|hire) (?:me|us)\b|\bmy (?:commissions?|shop|store|etsy|ko-?fi|patreon)\b|\bget in touch\b|\blink in bio\b|\bi made these\b/i, w: -8, label: "artist promoting their own work" },
-  { re: /\b(?:not|never|no longer|stopped|(?:don|doesn|didn|isn|aren|wasn|won|can)(?:'|’)?t)\b[^.!?\n]{0,15}\b(?:looking|searching|hiring|seeking|need|want)\b/i, w: -8, label: "says they are NOT looking" },
-  { re: /\b(?:are you|are u|you(?:'|’)?re|you are|if you|did you)\b[^.!?\n]{0,25}\b(?:looking|need|want|searching|hiring)\b/i, w: -8, label: "talking to someone else, not asking" },
+  { re: /\b(?:not|never|no longer|stopped|(?:don|doesn|didn|isn|aren|wasn|won|can)(?:'|’)?t)\b[^.!?\n]{0,15}\b(?:looking|searching|hiring|seeking|need|want)\b/i, w: -12, label: "says they are NOT looking" },
+  { re: /\b(?:are you|are u|you(?:'|’)?re|you are|if you|if u|did you|when you|do you|you can|you want|you need)\b[^.!?\n]{0,25}\b(?:looking|need|want|searching|hiring|commission|hire|order)\b/i, w: -12, label: "advice or meme addressed to readers" },
+  { re: /https?:\/\/|\b[a-z0-9-]+\.(?:com|net|org|io|co|app)\b/i, w: -4, label: "contains a link" },
+  { re: /#commissions?open|#openforcommissions|#artistsonbluesky|#commissionsopen/i, w: -8, label: "commission-advertising hashtag" },
   { re: /\b(?:they|he|she|the company|the brand|the studio|the team)\b[^.!?\n]{0,30}\b(?:decided to|chose to|hired|commissioned)\b/i, w: -5, label: "about someone else's commission" },
   { re: /\bi(?:'|’)?d be down\b|\bi can (?:draw|do|make|design)\b|\bi(?:'|’)?d love to (?:draw|design|do)\b|\bi(?:'|’)?m an? (?:artist|illustrator|designer)\b/i, w: -6, label: "offering their own help" },
   { re: /\bcommission (?:you|them|him|her|your|their|this|that)\b/i, w: -4, label: "talking about a specific artist" },
