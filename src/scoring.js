@@ -10,12 +10,14 @@ export const DEFAULT_EXCLUDED = [
   "commissions open", "open for commissions", "taking commissions",
   "accepting commissions", "for hire", "dm for prices"
 ];
-export const DEFAULT_MIN_SCORE = 3;
+export const DEFAULT_MIN_SCORE = 4;
 
 // Scoring weights: edit the numbers here to tune the app.
+// strong: true marks a signal that can make a post HIGH intent (together with score 7+).
 const POSITIVE = [
-  { re: /\b(?:looking|searching|hunting|seeking|wanting|want|need|needing|hiring)\b[^.!?\n]{0,25}\b(?:to commission|to hire|commission an?|commission some)/i, w: 5, label: "wants to commission or hire" },
-  { re: /\b(?:looking|searching|seeking|hiring|need|needing|want|wanting)\b[^.!?\n]{0,40}\b(?:artist|illustrator|designer|animator|cover artist)\b/i, w: 5, label: "looking for an artist or designer" },
+  { re: /\b(?:looking|searching|hunting|seeking|wanting|want|need|needing|hiring)\b[^.!?\n]{0,25}\b(?:to commission|to hire|commission an?|commission some|hire an?|hire some)/i, w: 3, label: "says they want to commission or hire" },
+  { re: /\b(?:looking|searching|seeking|hiring|need|needing|want|wanting)\b[^.!?\n]{0,40}\b(?:artist|illustrator|designer|animator|cover artist)\b/i, w: 5, strong: true, label: "looking for an artist or designer" },
+  { re: /\b(?:commission(?:ing)?|hire|hiring)\b[^.!?\n]{0,40}\b(?:art|artwork|artist|illustrat\w*|draw\w*|design\w*|logo|portrait|oc|ocs|character|emotes?|vtuber|cover|animation|sketch)\b/i, w: 4, strong: true, label: "commission or hire tied to art or design work" },
   { re: /\bwho (?:takes|does|is taking|is open for) commissions\b/i, w: 3, label: "asking who takes commissions" },
   { re: /\b(?:can|could|does) (?:anyone|someone|somebody)\b[^.!?\n]{0,30}\b(?:recommend|suggest|draw|design|make)\b/i, w: 3, label: "asking for recommendations or help" },
   { re: /\b(?:recommend(?:ations?)?|recs?|suggestions?)\b[^.!?\n]{0,40}\b(?:artist|illustrator|designer)\b/i, w: 3, label: "seeking recommendations" },
@@ -24,6 +26,9 @@ const POSITIVE = [
 ];
 const NEGATIVE = [
   { re: /\b(?:commissions? (?:are )?(?:open|closed)|open for commissions|taking commissions|accepting commissions|available for (?:hire|commissions?)|for hire|dm (?:me )?for (?:prices|rates|commissions?))\b/i, w: -8, label: "artist advertising services" },
+  { re: /\b(?:commission|hire) (?:me|us)\b|\bmy (?:commissions?|shop|store|etsy|ko-?fi|patreon)\b|\bget in touch\b|\blink in bio\b|\bi made these\b/i, w: -8, label: "artist promoting their own work" },
+  { re: /\bcommission (?:you|them|him|her|your|their|this|that)\b/i, w: -4, label: "talking about a specific artist" },
+  { re: /\b(?:can(?:'|’)?t (?:afford|warrant)|cannot afford|someday|one day|wish i could|once the holidays|when i have (?:the )?money)\b/i, w: -3, label: "not ready to hire yet" },
   { re: /\b(?:tutorial|how to draw|speed ?paint|time-?lapse|art tips)\b/i, w: -4, label: "tutorial or process content" },
   { re: /\b(?:i (?:just )?(?:drew|painted|finished)|here(?:'|’)?s my|my (?:latest|new) (?:art|drawing|piece))\b/i, w: -3, label: "sharing own artwork" }
 ];
@@ -37,7 +42,7 @@ function detectCategory(t) {
   return "Other";
 }
 
-// High needs a strong "hire" signal AND score 7+. Medium is 4+. Everything else is low.
+// High needs a strong signal AND score 7+. Medium is 4+. Everything else is low.
 export function scorePost(text, cfg) {
   const t = String(text || "");
   const lower = t.toLowerCase();
@@ -50,7 +55,11 @@ export function scorePost(text, cfg) {
   let strong = false;
   const reasons = [];
   for (const r of POSITIVE) {
-    if (r.re.test(t)) { score += r.w; reasons.push(r.label + " (+" + r.w + ")"); if (r.w >= 5) strong = true; }
+    if (r.re.test(t)) {
+      score += r.w;
+      reasons.push(r.label + " (+" + r.w + ")");
+      if (r.strong) strong = true;
+    }
   }
   for (const r of NEGATIVE) {
     if (r.re.test(t)) { score += r.w; reasons.push(r.label + " (" + r.w + ")"); }
