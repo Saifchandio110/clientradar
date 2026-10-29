@@ -14,6 +14,8 @@
 <main>
   <div class="card">
     <h2>Live Bluesky search (real public posts)</h2>
+    <label for="tok">Admin token</label>
+    <input id="tok" type="password" autocomplete="off">
     <label for="q">Search phrase</label>
     <input id="q" value="looking to commission">
     <div class="actions">
@@ -24,10 +26,10 @@
   </div>
   <div id="results"></div>
 </main>
-<script type="module">
-import { searchPosts } from "./bluesky.js";
+<script>
 const $ = (s) => document.querySelector(s);
 let cursor = null, count = 0;
+$("#tok").value = localStorage.getItem("cr_token") || "";
 
 function card(p) {
   const d = document.createElement("div");
@@ -63,20 +65,32 @@ function card(p) {
 
 async function run(reset) {
   const q = $("#q").value.trim();
+  const token = $("#tok").value.trim();
+  if (!token) { $("#status").textContent = "Enter your admin token first."; return; }
   if (!q) { $("#status").textContent = "Type a phrase first."; return; }
+  localStorage.setItem("cr_token", token);
   if (reset) { cursor = null; count = 0; $("#results").replaceChildren(); }
   $("#status").textContent = "Searching...";
-  const r = await searchPosts(q, { cursor: cursor });
-  if (!r.ok) {
-    $("#status").textContent = "FAILED (" + r.kind + "): " + r.message;
+  let res, data;
+  try {
+    const url = "/api/search-test?q=" + encodeURIComponent(q) + (cursor ? "&cursor=" + encodeURIComponent(cursor) : "");
+    res = await fetch(url, { headers: { "x-admin-token": token } });
+    data = await res.json();
+  } catch (e) {
+    $("#status").textContent = "FAILED: could not reach the server or got an invalid reply.";
     $("#more").disabled = true;
     return;
   }
-  r.posts.forEach((p) => $("#results").append(card(p)));
-  count += r.posts.length;
-  cursor = r.cursor;
+  if (!res.ok || !data.ok) {
+    $("#status").textContent = "FAILED (HTTP " + res.status + "): " + (data.error || "unknown error");
+    $("#more").disabled = true;
+    return;
+  }
+  data.posts.forEach((p) => $("#results").append(card(p)));
+  count += data.posts.length;
+  cursor = data.cursor;
   $("#more").disabled = !cursor;
-  $("#status").textContent = "OK: showing " + count + " posts" + (r.hits != null ? " (Bluesky reports about " + r.hits + " matches)" : "") + ".";
+  $("#status").textContent = "OK: showing " + count + " posts" + (data.hits != null ? " (Bluesky reports about " + data.hits + " matches)" : "") + ".";
 }
 
 $("#go").addEventListener("click", () => run(true));
