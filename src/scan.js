@@ -137,7 +137,7 @@ export async function runScan(env) {
       const s = scorePost(p.text, cfg, p);
       if (!s.skip && s.score > 0 && s.score >= cfg.minScore) keep.push({ p: p, s: s });
     }
-    keep.sort((a, b) => b.s.score - a.s.score);
+        keep.sort((a, b) => (Date.parse(b.p.created_at) || 0) - (Date.parse(a.p.created_at) || 0));
 
     const fresh = keep.length ? await onlyNew(db, keep) : [];
     freshCount = fresh.length;
