@@ -4,7 +4,8 @@ import { scorePost, DEFAULT_KEYWORDS, DEFAULT_EXCLUDED, DEFAULT_MIN_SCORE } from
 const PDS = "https://bsky.social/xrpc";
 const PHRASES_PER_SCAN = 8;
 const MAX_PAGES = 2;
-const INSERT_CAP = 20;
+const INSERT_CAP = 10;
+const MAX_AGE_MS = 7 * 24 * 3600000;
 const UPSERT = "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value";
 const INSERT_POST = "INSERT INTO posts (uri, author_handle, author_name, text, url, created_at, detected_at, intent, score, category, reasons) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11) ON CONFLICT(uri) DO NOTHING";
 
@@ -73,13 +74,27 @@ async function searchPage(jwt, phrase, cursor, since) {
   return { posts: posts, cursor: data.cursor || null };
 }
 
+// Remove posts that are already saved in the database, so we never show them twice.
+async function onlyNew(db, items) {
+  const have = new Set();
+  const uris = items.map((x) => x.p.uri);
+  for (let i = 0; i < uris.length; i += 90) {
+    const chunk = uris.slice(i, i + 90);
+    const { results } = await db.prepare("SELECT uri FROM posts WHERE uri IN (" + chunk.map(() => "?").join(",") + ")").bind(...chunk).all();
+    for (const r of results) have.add(r.uri);
+  }
+  return items.filter((x) => !have.has(x.p.uri));
+}
+
 export async function runScan(env) {
   const db = env.DB;
   const started = new Date().toISOString();
   const run = await db.prepare("INSERT INTO scan_runs (started_at, status) VALUES (?1, 'running')").bind(started).run();
   const runId = run.meta.last_row_id;
-  let seen = 0, queriesRun = 0, newMatches = 0, kept = 0, candidates = 0;
+  let seen = 0, queriesRun = 0, newMatches = 0, candidates = 0, freshCount = 0;
   const errors = [];
+  const cutoffMs = Date.now() - MAX_AGE_MS;
+  const cutoffIso = new Date(cutoffMs).toISOString();
 
   try {
     const cfg = await loadSettings(db);
@@ -95,9 +110,8 @@ export async function runScan(env) {
     outer:
     for (const phrase of picks) {
       const t = Date.parse(cfg.phraseLastRun[phrase]);
-      const since = Number.isFinite(t)
-        ? new Date(t - 15 * 60000).toISOString()
-        : new Date(Date.now() - 24 * 3600000).toISOString();
+      const base = Number.isFinite(t) ? Math.max(t - 15 * 60000, cutoffMs) : cutoffMs;
+      const since = new Date(base).toISOString();
       let cursor = null;
       for (let page = 0; page < MAX_PAGES; page++) {
         const r = await searchPage(session.jwt, phrase, cursor, since);
@@ -118,12 +132,16 @@ export async function runScan(env) {
     candidates = found.size;
     const keep = [];
     for (const p of found.values()) {
-      const s = scorePost(p.text, cfg);
+      const made = Date.parse(p.created_at);
+      if (Number.isFinite(made) && made < cutoffMs) continue; // older than 7 days
+      const s = scorePost(p.text, cfg, p);
       if (!s.skip && s.score > 0 && s.score >= cfg.minScore) keep.push({ p: p, s: s });
     }
     keep.sort((a, b) => b.s.score - a.s.score);
-    kept = keep.length;
-    const toInsert = keep.slice(0, INSERT_CAP);
+
+    const fresh = keep.length ? await onlyNew(db, keep) : [];
+    freshCount = fresh.length;
+    const toInsert = fresh.slice(0, INSERT_CAP);
     const now = new Date().toISOString();
     if (toInsert.length) {
       const stmts = toInsert.map((x) => db.prepare(INSERT_POST).bind(
@@ -134,8 +152,8 @@ export async function runScan(env) {
       newMatches = res.reduce((sum, r) => sum + (r.meta && r.meta.changes ? 1 : 0), 0);
     }
 
-    // Only advance the per-phrase clock when nothing was left behind by the insert cap.
-    const complete = keep.length <= INSERT_CAP;
+    // Only move the per-phrase clock forward when no new posts were left for the next scan.
+    const complete = fresh.length <= INSERT_CAP;
     const state = cfg.phraseLastRun;
     if (complete) for (const ph of okPhrases) state[ph] = started;
     await db.batch([
@@ -143,10 +161,13 @@ export async function runScan(env) {
       db.prepare(UPSERT).bind("phrase_last_run", JSON.stringify(state))
     ]);
 
+    // Delete unsaved posts older than 7 days. Saved posts are always kept.
+    await db.prepare("DELETE FROM posts WHERE is_saved = 0 AND created_at < ?1").bind(cutoffIso).run();
+
     await db.prepare("UPDATE scan_runs SET status = 'ok', finished_at = ?1, queries_run = ?2, posts_seen = ?3, new_matches = ?4, error = ?5 WHERE id = ?6")
       .bind(new Date().toISOString(), queriesRun, seen, newMatches, errors.length ? errors.join("; ").slice(0, 500) : null, runId).run();
 
-    return { runId: runId, status: "ok", searches: queriesRun, postsSeen: seen, uniquePosts: candidates, matchedRules: kept, newlySaved: newMatches, truncatedByCap: !complete, errors: errors };
+    return { runId: runId, status: "ok", searches: queriesRun, postsSeen: seen, uniquePosts: candidates, newQualifying: freshCount, newlySaved: newMatches, leftForNextScan: Math.max(0, freshCount - INSERT_CAP), errors: errors };
   } catch (e) {
     const msg = String(e && e.message ? e.message : e).slice(0, 500);
     try {
