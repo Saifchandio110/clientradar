@@ -1,3 +1,4 @@
+
 import { runScan } from "./scan.js";
 import { DEFAULT_KEYWORDS, DEFAULT_EXCLUDED, DEFAULT_MIN_SCORE } from "./scoring.js";
 import { handlePush } from "./push.js";
@@ -28,7 +29,7 @@ function checkAdmin(request, env) {
   return null;
 }
 
-  async fetch(request, env, ctx) {
+async function stats(env) {
   const db = env.DB;
   const r = await db.batch([
     db.prepare("SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END), 0) AS unread, COALESCE(SUM(CASE WHEN intent = 'high' THEN 1 ELSE 0 END), 0) AS high, COALESCE(SUM(is_saved), 0) AS saved FROM posts"),
@@ -39,10 +40,8 @@ function checkAdmin(request, env) {
 }
 
 async function listPosts(env, url) {
-  const where = [];
-  const args = [];
-    where.push("(created_at >= ? OR is_saved = 1)");
-  args.push(new Date(Date.now() - 7 * 24 * 3600000).toISOString());
+  const where = ["(created_at >= ? OR is_saved = 1)"];
+  const args = [new Date(Date.now() - 7 * 24 * 3600000).toISOString()];
   const intent = url.searchParams.get("intent");
   if (intent === "high" || intent === "medium" || intent === "low") { where.push("intent = ?"); args.push(intent); }
   const cat = url.searchParams.get("category");
@@ -54,8 +53,8 @@ async function listPosts(env, url) {
   const hours = parseInt(url.searchParams.get("hours") || "0", 10);
   if (hours > 0 && hours <= 8760) { where.push("detected_at >= ?"); args.push(new Date(Date.now() - hours * 3600000).toISOString()); }
   const sql = "SELECT id, uri, author_handle, author_name, text, url, created_at, detected_at, intent, score, category, reasons, is_read, is_saved FROM posts"
-    + (where.length ? " WHERE " + where.join(" AND ") : "")
-       + " ORDER BY created_at DESC, id DESC LIMIT 50";
+    + " WHERE " + where.join(" AND ")
+    + " ORDER BY created_at DESC, id DESC LIMIT 50";
   const { results } = await env.DB.prepare(sql).bind(...args).all();
   return results.map((p) => {
     let reasons = [];
@@ -127,7 +126,7 @@ async function putSettings(env, request) {
 }
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     try {
       const url = new URL(request.url);
       const path = url.pathname;
@@ -144,13 +143,13 @@ export default {
       }
       if (path === "/api/stats" && request.method === "GET") return json(await stats(env));
       if (path === "/api/posts" && request.method === "GET") return json({ posts: await listPosts(env, url) });
-      const m = /^\/api\/posts\/(\d+)$/.exec(path);
-      if (m && request.method === "PATCH") return await patchPost(env, request, Number(m[1]));
-            if (path === "/api/posts/mark-all-read" && request.method === "POST") {
+      if (path === "/api/posts/mark-all-read" && request.method === "POST") {
         const r = await env.DB.prepare("UPDATE posts SET is_read = 1 WHERE is_read = 0").run();
         return json({ ok: true, changed: r.meta.changes });
       }
-            if (path.startsWith("/api/push/")) return await handlePush(request, env, ctx, path);
+      const m = /^\/api\/posts\/(\d+)$/.exec(path);
+      if (m && request.method === "PATCH") return await patchPost(env, request, Number(m[1]));
+      if (path.startsWith("/api/push/")) return await handlePush(request, env, ctx, path);
       if (path === "/api/settings" && request.method === "GET") return json(await getSettings(env));
       if (path === "/api/settings" && request.method === "PUT") return await putSettings(env, request);
       if (path === "/api/activity" && request.method === "GET") {
