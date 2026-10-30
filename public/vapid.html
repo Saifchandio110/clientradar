@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VAPID key generator</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header><h1>VAPID keys</h1></header>
+<main>
+  <div class="card">
+    <p class="muted">Generate once only. Keys are created in this browser and are never sent anywhere.</p>
+    <button id="gen" class="btn">Generate keys</button>
+    <label for="pub">VAPID_PUBLIC_KEY</label>
+    <textarea id="pub" rows="3" readonly></textarea>
+    <button id="cpub" class="btn">Copy public key</button>
+    <label for="priv">VAPID_PRIVATE_KEY (keep secret)</label>
+    <textarea id="priv" rows="2" readonly></textarea>
+    <button id="cpriv" class="btn">Copy private key</button>
+    <p id="m" class="muted"></p>
+  </div>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+function b64u(buf) {
+  let s = "";
+  for (const x of new Uint8Array(buf)) s += String.fromCharCode(x);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+$("#gen").addEventListener("click", async () => {
+  const kp = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+  $("#pub").value = b64u(await crypto.subtle.exportKey("raw", kp.publicKey));
+  $("#priv").value = (await crypto.subtle.exportKey("jwk", kp.privateKey)).d;
+  $("#m").textContent = "Done. Copy both into Cloudflare secrets.";
+});
+async function copy(id) {
+  try { await navigator.clipboard.writeText($(id).value); $("#m").textContent = "Copied."; }
+  catch (e) { $("#m").textContent = "Copy failed. Long-press the box and copy manually."; }
+}
+$("#cpub").addEventListener("click", () => copy("#pub"));
+$("#cpriv").addEventListener("click", () => copy("#priv"));
+</script>
+</body>
+</html>
