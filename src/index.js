@@ -40,6 +40,8 @@ async function stats(env) {
 async function listPosts(env, url) {
   const where = [];
   const args = [];
+    where.push("(created_at >= ? OR is_saved = 1)");
+  args.push(new Date(Date.now() - 7 * 24 * 3600000).toISOString());
   const intent = url.searchParams.get("intent");
   if (intent === "high" || intent === "medium" || intent === "low") { where.push("intent = ?"); args.push(intent); }
   const cat = url.searchParams.get("category");
