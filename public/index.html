@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#0b1020">
 <title>ClientRadar</title>
 <link rel="stylesheet" href="styles.css">
+  <link rel="manifest" href="manifest.webmanifest">
 </head>
 <body>
 <header>
@@ -68,8 +69,13 @@
     </div>
     <div class="card">
       <h2>Notifications</h2>
-      <p>Permission: <strong id="perm"></strong></p>
-      <button class="btn" disabled>Send test notification (Phase 6)</button>
+           <p>Permission: <strong id="perm"></strong></p>
+      <div class="actions">
+        <button id="enable-push" class="btn">Enable notifications</button>
+        <button id="test-push" class="btn">Send test now</button>
+        <button id="test-push-delay" class="btn">Test in 15 seconds</button>
+      </div>
+      <p id="push-msg" class="muted"></p>
     </div>
   </section>
 
