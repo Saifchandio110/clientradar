@@ -1,5 +1,6 @@
 import { normalizePost } from "../public/bluesky.js";
 import { scorePost, DEFAULT_KEYWORDS, DEFAULT_EXCLUDED, DEFAULT_MIN_SCORE } from "./scoring.js";
+import { notifyNew } from "./push.js";
 
 const PDS = "https://bsky.social/xrpc";
 const PHRASES_PER_SCAN = 8;
