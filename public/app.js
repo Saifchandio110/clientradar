@@ -117,7 +117,7 @@ async function loadActivity() {
   } catch (e) { msg(e.message); }
 }
 
-const LOADERS = { dashboard: loadDashboard, feed: loadFeed, settings: loadSettings, activity: loadActivity };
+const LOADERS = { dashboard: loadDashboard, feed: loadFeed, settings: loadSettings, activity: loadActivity, xsearch: loadX };
 function show(view) {
   document.querySelectorAll("nav button, .view").forEach((e) => e.classList.remove("active"));
   document.querySelector('nav button[data-view="' + view + '"]').classList.add("active");
@@ -199,3 +199,19 @@ async function testPush(delay) {
 }
 $("#test-push").addEventListener("click", () => testPush(0));
 $("#test-push-delay").addEventListener("click", () => testPush(15));
+
+// ---- X (Twitter) search links ----
+function xUrl(phrase) {
+  const q = '"' + phrase + '" -filter:replies -filter:nativeretweets -"commissions open" -"for hire" lang:en';
+  return "https://x.com/search?q=" + encodeURIComponent(q) + "&f=live";
+}
+async function loadX() {
+  let words = ["looking to commission", "need an artist", "looking for an illustrator", "need a logo designer", "looking for a graphic designer"];
+  try {
+    const s = await api("/api/settings");
+    if (s.keywords && s.keywords.length) words = s.keywords;
+    msg("");
+  } catch (e) { msg(e.message); }
+  $("#xlinks").replaceChildren(...words.map((w) =>
+    h("div", { class: "row" }, h("a", { class: "btn", href: xUrl(w), target: "_blank", rel: "noopener noreferrer" }, w))));
+}
