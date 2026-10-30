@@ -151,6 +151,8 @@ export async function runScan(env) {
       ));
       const res = await db.batch(stmts);
       newMatches = res.reduce((sum, r) => sum + (r.meta && r.meta.changes ? 1 : 0), 0);
+            const inserted = toInsert.filter((x, i) => res[i].meta && res[i].meta.changes);
+      await notifyNew(env, inserted);
     }
 
     // Only move the per-phrase clock forward when no new posts were left for the next scan.
