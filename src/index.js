@@ -1,5 +1,6 @@
 import { runScan } from "./scan.js";
 import { DEFAULT_KEYWORDS, DEFAULT_EXCLUDED, DEFAULT_MIN_SCORE } from "./scoring.js";
+import { handlePush } from "./push.js";
 
 const UPSERT = "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value";
 
@@ -27,7 +28,7 @@ function checkAdmin(request, env) {
   return null;
 }
 
-async function stats(env) {
+  async fetch(request, env, ctx) {
   const db = env.DB;
   const r = await db.batch([
     db.prepare("SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END), 0) AS unread, COALESCE(SUM(CASE WHEN intent = 'high' THEN 1 ELSE 0 END), 0) AS high, COALESCE(SUM(is_saved), 0) AS saved FROM posts"),
