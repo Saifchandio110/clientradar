@@ -145,6 +145,10 @@ export default {
       if (path === "/api/posts" && request.method === "GET") return json({ posts: await listPosts(env, url) });
       const m = /^\/api\/posts\/(\d+)$/.exec(path);
       if (m && request.method === "PATCH") return await patchPost(env, request, Number(m[1]));
+            if (path === "/api/posts/mark-all-read" && request.method === "POST") {
+        const r = await env.DB.prepare("UPDATE posts SET is_read = 1 WHERE is_read = 0").run();
+        return json({ ok: true, changed: r.meta.changes });
+      }
       if (path === "/api/settings" && request.method === "GET") return json(await getSettings(env));
       if (path === "/api/settings" && request.method === "PUT") return await putSettings(env, request);
       if (path === "/api/activity" && request.method === "GET") {
