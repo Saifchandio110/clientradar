@@ -150,6 +150,7 @@ export default {
         const r = await env.DB.prepare("UPDATE posts SET is_read = 1 WHERE is_read = 0").run();
         return json({ ok: true, changed: r.meta.changes });
       }
+            if (path.startsWith("/api/push/")) return await handlePush(request, env, ctx, path);
       if (path === "/api/settings" && request.method === "GET") return json(await getSettings(env));
       if (path === "/api/settings" && request.method === "PUT") return await putSettings(env, request);
       if (path === "/api/activity" && request.method === "GET") {
