@@ -161,3 +161,41 @@ $("#mark-all").addEventListener("click", async () => {
 });
 if (localStorage.getItem("cr_token")) loadDashboard();
 else show("settings");
+// ---- Push notifications ----
+function pmsg(t) { $("#push-msg").textContent = t; }
+function keyToBytes(s) {
+  s = s.replace(/-/g, "+").replace(/_/g, "/");
+  while (s.length % 4) s += "=";
+  const bin = atob(s);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+
+$("#enable-push").addEventListener("click", async () => {
+  try {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) { pmsg("This browser does not support push notifications."); return; }
+    const perm = await Notification.requestPermission();
+    $("#perm").textContent = perm;
+    if (perm !== "granted") { pmsg("Permission not granted. Allow notifications for this site in Chrome's site settings."); return; }
+    const reg = await navigator.serviceWorker.register("sw.js");
+    await navigator.serviceWorker.ready;
+    const k = await api("/api/push/key");
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: keyToBytes(k.key) });
+    await api("/api/push/subscribe", { method: "POST", body: sub.toJSON() });
+    pmsg("Notifications enabled on this device. Now tap a test button.");
+  } catch (e) { pmsg("Could not enable: " + e.message); }
+});
+
+async function testPush(delay) {
+  try {
+    const r = await api("/api/push/test" + (delay ? "?delay=" + delay : ""), { method: "POST" });
+    if (delay) pmsg("Scheduled. Close Chrome or lock your phone now. A notification should arrive in about " + delay + " seconds.");
+    else if (!r.devices) pmsg("No device is subscribed yet. Tap Enable notifications first.");
+    else pmsg("Sent to " + r.sent + " of " + r.devices + " device(s). Push service replies: " + r.statuses.join(", ") + (r.detail ? " (" + r.detail + ")" : ""));
+  } catch (e) { pmsg(e.message); }
+}
+$("#test-push").addEventListener("click", () => testPush(0));
+$("#test-push-delay").addEventListener("click", () => testPush(15));
