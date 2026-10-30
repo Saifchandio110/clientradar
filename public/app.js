@@ -152,5 +152,12 @@ $("#scan-now").addEventListener("click", async () => {
   } catch (e) { msg(e.message); }
 });
 
+$("#mark-all").addEventListener("click", async () => {
+  try {
+    await api("/api/posts/mark-all-read", { method: "POST" });
+    await loadFeed();
+    loadDashboard();
+  } catch (e) { msg(e.message); }
+});
 if (localStorage.getItem("cr_token")) loadDashboard();
 else show("settings");
