@@ -54,7 +54,7 @@ async function listPosts(env, url) {
   if (hours > 0 && hours <= 8760) { where.push("detected_at >= ?"); args.push(new Date(Date.now() - hours * 3600000).toISOString()); }
   const sql = "SELECT id, uri, author_handle, author_name, text, url, created_at, detected_at, intent, score, category, reasons, is_read, is_saved FROM posts"
     + (where.length ? " WHERE " + where.join(" AND ") : "")
-    + " ORDER BY CASE intent WHEN 'high' THEN 0 WHEN 'medium' THEN 1 ELSE 2 END, detected_at DESC LIMIT 50";
+       + " ORDER BY created_at DESC, id DESC LIMIT 50";
   const { results } = await env.DB.prepare(sql).bind(...args).all();
   return results.map((p) => {
     let reasons = [];
