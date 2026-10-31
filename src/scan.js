@@ -6,6 +6,7 @@ const PDS = "https://bsky.social/xrpc";
 const PHRASES_PER_SCAN = 8;
 const MAX_PAGES = 2;
 const INSERT_CAP = 10;
+const BLOCKED_AUTHORS = ["intentpond.bsky.social"];
 const MAX_AGE_MS = 7 * 24 * 3600000;
 const UPSERT = "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value";
 const INSERT_POST = "INSERT INTO posts (uri, author_handle, author_name, text, url, created_at, detected_at, intent, score, category, reasons) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11) ON CONFLICT(uri) DO NOTHING";
@@ -140,6 +141,7 @@ export async function runScan(env) {
     candidates = found.size;
     const keep = [];
     for (const p of found.values()) {
+            if (BLOCKED_AUTHORS.includes(String(p.author_handle).toLowerCase())) continue;
       const made = Date.parse(p.created_at);
       if (Number.isFinite(made) && made < cutoffMs) continue; // older than 7 days
       const s = scorePost(p.text, cfg, p);
