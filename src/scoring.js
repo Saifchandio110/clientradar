@@ -16,6 +16,7 @@ export const DEFAULT_MIN_SCORE = 4;
 // Scoring weights: edit the numbers here to tune the app.
 // strong: true marks a signal that can make a post HIGH intent (together with score 7+).
 const POSITIVE = [
+    { re: /#(?:lookingforartist|artistwanted|commissionswanted|needanartist|artcommissionswanted)\b/i, w: 3, label: "client-style hashtag" },
   { re: /\b(?:looking|searching|hunting|seeking|wanting|want|need|needing|hiring)\b[^.!?\n]{0,25}\b(?:to commission|to hire|commission an?|commission some|hire an?|hire some)/i, w: 3, label: "says they want to commission or hire" },
   { re: /\b(?:looking|searching|seeking|hiring|need|needing|want|wanting)\b[^.!?\n]{0,40}\b(?:artist|illustrator|designer|animator|cover artist)\b/i, w: 5, strong: true, label: "looking for an artist or designer" },
   { re: /\b(?:commission(?:ing)?|hire|hiring)\b[^.!?\n]{0,40}\b(?:art|artwork|artist|illustrat\w*|draw\w*|design\w*|logo|portrait|oc|ocs|character|emotes?|vtuber|cover|animation|sketch)\b/i, w: 4, strong: true, label: "commission or hire tied to art or design work" },
