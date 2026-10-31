@@ -55,7 +55,14 @@ async function loadSettings(db) {
 
 async function searchPage(jwt, phrase, cursor, since) {
   const u = new URL(PDS + "/app.bsky.feed.searchPosts");
-  u.searchParams.set("q", '"' + phrase + '"');
+   if (phrase.startsWith("#")) {
+    const tag = phrase.slice(1).replace(/[^A-Za-z0-9_]/g, "").slice(0, 60);
+    if (!tag) return { error: "bad", message: "empty hashtag" };
+    u.searchParams.set("q", "#" + tag);
+    u.searchParams.set("tag", tag);
+  } else {
+    u.searchParams.set("q", '"' + phrase + '"');
+  }
   u.searchParams.set("sort", "latest");
   u.searchParams.set("limit", "25");
   u.searchParams.set("lang", "en");
