@@ -27,6 +27,11 @@ const POSITIVE = [
   { re: /\b(?:oc|ocs|character|fursona|vtuber|logo|book cover|cover art|profile picture|pfp|avatar|emotes?|mascot)\b/i, w: 1, label: "specific project type" }
 ];
 const NEGATIVE = [ 
+    { re: /\binstead of (?:hiring|commissioning|paying)\b|\b(?:should|shouldn(?:'|’)?t|must|need to|have to) (?:hire|pay|commission)\b/i, w: -10, label: "complaint or opinion about hiring artists" },
+  { re: /\b(?:i|we) (?:already )?(?:found|hired|commissioned)\b|\bfound (?:an?|the) (?:amazing |great |good )?(?:artist|illustrator|designer)\b|\b(?:a few|few|couple of) days ago\b|\bi appreciate everyone\b|\bthank(?:s| you) (?:to )?(?:everyone|all)\b/i, w: -10, label: "already found someone or past request" },
+  { re: /\bplan(?:ning|s)? (?:on|to) (?:hiring|hire|commission\w*)\b|\b(?:later|eventually|in the future)\b[^.!?\n]{0,25}\b(?:hire|hiring|commission)/i, w: -6, label: "planning to hire later, not now" },
+  { re: /\b(?:update on|the guy|art director|disclosure|backlash|controvers\w*|outrage|disgust\w*|scandal|boycott|shame on)\b/i, w: -6, label: "news or opinion about someone else" },
+  { re: /\b(?:gen ?ai|generative ai|ai art|ai-generated|ai generated)\b/i, w: -3, label: "AI-art discussion" },
     { re: /\b(?:if|when) (?:anyone|someone|somebody)\b[^.!?\n]{0,25}\b(?:looking|needs?|wants?|hiring)\b/i, w: -12, label: "conditional or hypothetical, not a request" },
   { re: /\blooking for (?:some |more )?(?:work|a job|jobs|clients|gigs|opportunities)\b/i, w: -12, label: "artist looking for work" },
   { re: /\b(?:was|were|had been|ended up)\b[^.!?\n]{0,15}\b(?:looking|searching|hiring)\b/i, w: -8, label: "telling a past story" },
