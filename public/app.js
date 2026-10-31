@@ -78,7 +78,7 @@ function renderFeed(posts) {
   const box = $("#cards");
   if (!posts.length) { box.replaceChildren(h("p", { class: "muted" }, "No posts match these filters yet.")); return; }
   box.replaceChildren(...posts.map((p) =>
-    h("div", { class: "card" + (p.is_read ? "" : " unread") },
+       h("div", { class: "card i-" + p.intent + (p.is_read ? "" : " unread") },
       h("div", { class: "row" }, h("strong", {}, p.author_name || p.author_handle), h("span", { class: "handle" }, "@" + p.author_handle)),
       h("div", { class: "row" },
         h("span", { class: "badge " + p.intent }, p.intent.toUpperCase() + " " + p.score),
