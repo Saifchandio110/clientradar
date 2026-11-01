@@ -2,6 +2,7 @@
 import { runScan } from "./scan.js";
 import { DEFAULT_KEYWORDS, DEFAULT_EXCLUDED, DEFAULT_MIN_SCORE } from "./scoring.js";
 import { handlePush } from "./push.js";
+import { scoreDiscordMessage } from "./discord_scoring.js";
 
 const UPSERT = "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value";
 
@@ -149,6 +150,15 @@ export default {
       }
       const m = /^\/api\/posts\/(\d+)$/.exec(path);
       if (m && request.method === "PATCH") return await patchPost(env, request, Number(m[1]));
+            if (path === "/api/discord/score-test" && request.method === "POST") {
+        let b;
+        try { b = await request.json(); } catch (e) { return json({ error: "Invalid JSON." }, 400); }
+        if (!b || typeof b.text !== "string" || !b.text.trim() || b.text.length > 2000) return json({ error: "Send text of 1 to 2000 characters." }, 400);
+        const st = await getSettings(env);
+        const channel = { name: typeof b.channel === "string" ? b.channel.slice(0, 80) : "" };
+        const msg = { id: "test", type: 0, content: b.text, author: { bot: false } };
+        return json(scoreDiscordMessage(msg, { excluded: st.excluded, keywords: st.keywords, minScore: st.min_score }, channel));
+      }
       if (path.startsWith("/api/push/")) return await handlePush(request, env, ctx, path);
       if (path === "/api/settings" && request.method === "GET") return json(await getSettings(env));
       if (path === "/api/settings" && request.method === "PUT") return await putSettings(env, request);
