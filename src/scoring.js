@@ -15,7 +15,7 @@ export const DEFAULT_MIN_SCORE = 4;
 
 // Scoring weights: edit the numbers here to tune the app.
 // strong: true marks a signal that can make a post HIGH intent (together with score 7+).
-const POSITIVE = [
+export const POSITIVE = [
     { re: /#(?:lookingforartist|artistwanted|commissionswanted|needanartist|artcommissionswanted)\b/i, w: 3, label: "client-style hashtag" },
   { re: /\b(?:looking|searching|hunting|seeking|wanting|want|need|needing|hiring)\b[^.!?\n]{0,25}\b(?:to commission|to hire|commission an?|commission some|hire an?|hire some)/i, w: 3, label: "says they want to commission or hire" },
   { re: /\b(?:looking|searching|seeking|hiring|need|needing|want|wanting)\b[^.!?\n]{0,40}\b(?:artist|illustrator|designer|animator|cover artist)\b/i, w: 5, strong: true, label: "looking for an artist or designer" },
@@ -26,7 +26,7 @@ const POSITIVE = [
   { re: /(?:\b(?:paid|paying|budget|pay you)\b|[$£€]\s?\d)/i, w: 2, label: "mentions payment or budget" },
   { re: /\b(?:oc|ocs|character|fursona|vtuber|logo|book cover|cover art|profile picture|pfp|avatar|emotes?|mascot)\b/i, w: 1, label: "specific project type" }
 ];
-const NEGATIVE = [ 
+export const NEGATIVE = [ 
     { re: /\binstead of (?:hiring|commissioning|paying)\b|\b(?:should|shouldn(?:'|’)?t|must|need to|have to) (?:hire|pay|commission)\b/i, w: -10, label: "complaint or opinion about hiring artists" },
   { re: /\b(?:i|we) (?:already )?(?:found|hired|commissioned)\b|\bfound (?:an?|the) (?:amazing |great |good )?(?:artist|illustrator|designer)\b|\b(?:a few|few|couple of) days ago\b|\bi appreciate everyone\b|\bthank(?:s| you) (?:to )?(?:everyone|all)\b/i, w: -10, label: "already found someone or past request" },
   { re: /\bplan(?:ning|s)? (?:on|to) (?:hiring|hire|commission\w*)\b|\b(?:later|eventually|in the future)\b[^.!?\n]{0,25}\b(?:hire|hiring|commission)/i, w: -6, label: "planning to hire later, not now" },
@@ -49,7 +49,7 @@ const NEGATIVE = [
   { re: /\b(?:i (?:just )?(?:drew|painted|finished)|here(?:'|’)?s my|my (?:latest|new) (?:art|drawing|piece))\b/i, w: -3, label: "sharing own artwork" }
 ];
 
-function detectCategory(t) {
+export function detectCategory(t) {
   if (/book cover|cover art|novel cover|cover illustrator/.test(t)) return "Book cover";
   if (/\blogo|branding|brand identity/.test(t)) return "Logo and branding";
   if (/graphic design|flyer|poster|banner|business card/.test(t)) return "Graphic design";
