@@ -2,6 +2,7 @@
 // There is no code anywhere in this file that sends, replies, reacts or contacts anyone.
 import { scoreDiscordMessage } from "./discord_scoring.js";
 import { DEFAULT_KEYWORDS, DEFAULT_EXCLUDED, DEFAULT_MIN_SCORE } from "./scoring.js";
+import { notifyNew, buildLeadPayload, pushToAll, configured as pushConfigured } from "./push.js";
 
 const API = "https://discord.com/api/v10";
 const USER_AGENT = "DiscordBot (https://clientradar.saifchandio60.workers.dev, 1.0)";
@@ -15,6 +16,9 @@ const UNSAVED_DAYS = 7;
 const SAVED_DAYS = 30;
 const PAUSE_AFTER_FAILURES = 5;
 const MAX_CHANNELS_CONFIGURED = 25;
+
+const UPSERT = "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value";
+const NOTIFY_MODES = ["all", "high", "off"];
 
 const INSERT_SQL = "INSERT INTO posts (uri, author_handle, author_name, text, url, created_at, detected_at, intent, score, category, reasons, platform, guild_id, guild_name, channel_id, channel_name, author_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'discord', ?12, ?13, ?14, ?15, ?16) ON CONFLICT(uri) DO NOTHING";
 
@@ -80,7 +84,8 @@ async function loadCfg(db) {
   return {
     keywords: parseList(m.keywords, DEFAULT_KEYWORDS, false),
     excluded: parseList(m.excluded, DEFAULT_EXCLUDED, true),
-    minScore: m.min_score != null && Number.isFinite(min) ? min : DEFAULT_MIN_SCORE
+    minScore: m.min_score != null && Number.isFinite(min) ? min : DEFAULT_MIN_SCORE,
+    notify: NOTIFY_MODES.includes(m.discord_notify) ? m.discord_notify : "all"
   };
 }
 
@@ -122,6 +127,7 @@ export async function runDiscordScan(env) {
     const cutoffMs = Date.now() - UNSAVED_DAYS * 86400000;
     const stmts = [];
     const insertIdx = [];
+    const pending = [];
     let budget = INSERT_CAP;
     let stop = false;
 
@@ -181,6 +187,10 @@ export async function runDiscordScan(env) {
               ch.guild_id || null, ch.guild_name || null, ch.channel_id, ch.channel_name || null,
               m.author && m.author.id ? String(m.author.id) : null
             ));
+            pending.push({
+              p: { platform: "discord", uri: "discord:" + m.id, author_handle: String((m.author && m.author.username) || "unknown"), author_name: String((m.author && m.author.global_name) || ""), text: s.text, url: url, channel_name: ch.channel_name || "", guild_name: ch.guild_name || "" },
+              s: { intent: s.intent, category: s.category }
+            });
             budget--;
           }
           seen++;
@@ -218,6 +228,12 @@ export async function runDiscordScan(env) {
 
     const res = await db.batch(stmts);
     newMatches = insertIdx.reduce((n, i) => n + (res[i].meta && res[i].meta.changes ? 1 : 0), 0);
+
+    // Notify about messages that were NEW in this scan only (duplicates are ignored by the database),
+    // using the same push system as Bluesky. One notification per scan, however many leads were found.
+    const fresh = pending.filter((x, i) => res[insertIdx[i]].meta && res[insertIdx[i]].meta.changes);
+    const wanted = cfg.notify === "off" ? [] : cfg.notify === "high" ? fresh.filter((x) => x.s.intent === "high") : fresh;
+    if (wanted.length) await notifyNew(env, wanted);
 
     const allFailed = checked > 0 && okChannels === 0 && !rateLimited;
     const note = problems.length ? problems.join(" | ") : null;
@@ -268,14 +284,17 @@ async function status(env) {
   const r = await db.batch([
     db.prepare("SELECT * FROM discord_runs WHERE status = 'ok' ORDER BY id DESC LIMIT 1"),
     db.prepare("SELECT * FROM discord_runs WHERE status = 'error' ORDER BY id DESC LIMIT 1"),
-    db.prepare("SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END), 0) AS unread, COALESCE(SUM(CASE WHEN intent = 'high' THEN 1 ELSE 0 END), 0) AS high, COALESCE(SUM(is_saved), 0) AS saved FROM posts WHERE platform = 'discord'")
+    db.prepare("SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END), 0) AS unread, COALESCE(SUM(CASE WHEN intent = 'high' THEN 1 ELSE 0 END), 0) AS high, COALESCE(SUM(is_saved), 0) AS saved FROM posts WHERE platform = 'discord'"),
+    db.prepare("SELECT value FROM settings WHERE key = 'discord_notify'")
   ]);
+  const mode = r[3].results[0] ? r[3].results[0].value : "all";
   return {
     botTokenConfigured: !!env.DISCORD_BOT_TOKEN,
     channels: await channelRows(db),
     lastSuccessfulRun: r[0].results[0] || null,
     lastFailedRun: r[1].results[0] || null,
-    counts: r[2].results[0]
+    counts: r[2].results[0],
+    notify: NOTIFY_MODES.includes(mode) ? mode : "all"
   };
 }
 
@@ -296,6 +315,19 @@ export async function handleDiscord(request, env, path) {
   if (path === "/api/discord/channels" && method === "GET") return json({ channels: await channelRows(env.DB) });
   if (path === "/api/discord/channels" && method === "PUT") return await putChannels(env, request);
   if (path === "/api/discord/posts" && method === "GET") return json({ posts: await listDiscordPosts(env) });
+  if (path === "/api/discord/notify" && method === "PUT") {
+    let b;
+    try { b = await request.json(); } catch (e) { return json({ error: "Invalid JSON." }, 400); }
+    if (!b || !NOTIFY_MODES.includes(b.mode)) return json({ error: "mode must be all, high or off." }, 400);
+    await env.DB.prepare(UPSERT).bind("discord_notify", b.mode).run();
+    return json({ ok: true, mode: b.mode });
+  }
+  if (path === "/api/discord/notify-test" && method === "POST") {
+    if (!pushConfigured(env)) return json({ error: "Push is not configured. Add the VAPID secrets." }, 500);
+    // A sample only: nothing is saved or marked in the database.
+    const sample = [{ p: { platform: "discord", author_name: "Sample person", author_handle: "sample", channel_name: "commission-requests", text: "Looking for an artist to draw my OC. (sample notification)", url: null }, s: { intent: "high", category: "Character art" } }];
+    return json(Object.assign({ ok: true }, await pushToAll(env, buildLeadPayload(sample))));
+  }
   if (path === "/api/discord/scan" && method === "POST") {
     if (!env.DISCORD_BOT_TOKEN) return json({ error: "Server is missing secret: DISCORD_BOT_TOKEN" }, 500);
     return json(await runDiscordScan(env));
