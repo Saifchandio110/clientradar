@@ -145,6 +145,7 @@ function renderDiscordStatus(s) {
   ];
   if (failedLast) rows.push(kv("Last problem", (bad.error || "unknown") + " (" + ago(bad.finished_at || bad.started_at) + ")"));
   $("#d-status-box").replaceChildren(...rows);
+    $("#d-notify").value = s.notify || "all";
 
   if (!s.channels.length) {
     $("#d-channels").replaceChildren(h("p", { class: "muted" }, "No channels yet. Add some below."));
@@ -263,6 +264,18 @@ $("#d-save").addEventListener("click", async () => {
     delete $("#d-ch").dataset.dirty;
     await loadDiscord();
     msg("Channels saved. They are read on the next Discord scan.");
+  } catch (e) { msg(e.message); }
+});
+$("#d-notify").addEventListener("change", async () => {
+  try {
+    await api("/api/discord/notify", { method: "PUT", body: { mode: $("#d-notify").value } });
+    msg("Discord notification preference saved.");
+  } catch (e) { msg(e.message); }
+});
+$("#d-sample").addEventListener("click", async () => {
+  try {
+    const r = await api("/api/discord/notify-test", { method: "POST" });
+    msg(!r.devices ? "No device is subscribed yet. Open Settings and tap Enable notifications first." : "Sample sent to " + r.sent + " of " + r.devices + " device(s).");
   } catch (e) { msg(e.message); }
 });
 $("#mark-all").addEventListener("click", async () => {
