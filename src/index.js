@@ -1,4 +1,3 @@
-
 import { runScan } from "./scan.js";
 import { DEFAULT_KEYWORDS, DEFAULT_EXCLUDED, DEFAULT_MIN_SCORE } from "./scoring.js";
 import { handlePush } from "./push.js";
@@ -151,7 +150,9 @@ export default {
       }
       const m = /^\/api\/posts\/(\d+)$/.exec(path);
       if (m && request.method === "PATCH") return await patchPost(env, request, Number(m[1]));
-            if (path === "/api/discord/score-test" && request.method === "POST") {
+
+      // Discord: try-a-message page (only scores text, never contacts Discord)
+      if (path === "/api/discord/score-test" && request.method === "POST") {
         let b;
         try { b = await request.json(); } catch (e) { return json({ error: "Invalid JSON." }, 400); }
         if (!b || typeof b.text !== "string" || !b.text.trim() || b.text.length > 2000) return json({ error: "Send text of 1 to 2000 characters." }, 400);
@@ -160,6 +161,9 @@ export default {
         const msg = { id: "test", type: 0, content: b.text, author: { bot: false } };
         return json(scoreDiscordMessage(msg, { excluded: st.excluded, keywords: st.keywords, minScore: st.min_score }, channel));
       }
+      // Discord: channels, status, scan, stored messages, forget a person
+      if (path.startsWith("/api/discord/")) return await handleDiscord(request, env, path);
+
       if (path.startsWith("/api/push/")) return await handlePush(request, env, ctx, path);
       if (path === "/api/settings" && request.method === "GET") return json(await getSettings(env));
       if (path === "/api/settings" && request.method === "PUT") return await putSettings(env, request);
@@ -173,8 +177,14 @@ export default {
     }
   },
 
-  // Runs on the cron schedule in wrangler.jsonc.
+  // Runs on the cron schedules in wrangler.jsonc.
   async scheduled(event, env, ctx) {
+    // Discord has its own schedule, so it has its own request budget.
+    if (event.cron === "7,22,37,52 * * * *") {
+      if (env.DB && env.DISCORD_BOT_TOKEN) ctx.waitUntil(runDiscordScan(env));
+      return;
+    }
+    // Every other schedule is the Bluesky scan.
     if (!env.DB || !env.BSKY_IDENTIFIER || !env.BSKY_APP_PASSWORD) return;
     ctx.waitUntil(runScan(env));
   }
