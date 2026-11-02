@@ -33,7 +33,7 @@ function concat(...parts) {
   return out;
 }
 
-function configured(env) {
+export function configured(env) {
   return !!(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY && env.VAPID_SUBJECT);
 }
 
@@ -113,7 +113,7 @@ async function sendPush(env, sub, payload) {
   }
 }
 
-async function pushToAll(env, payload) {
+export async function pushToAll(env, payload) {
   const { results } = await env.DB.prepare("SELECT id, endpoint, p256dh, auth FROM push_subscriptions ORDER BY id DESC LIMIT 5").all();
   const out = { devices: results.length, sent: 0, removed: 0, failed: 0, statuses: [], detail: "" };
   for (const s of results) {
@@ -128,20 +128,34 @@ async function pushToAll(env, payload) {
   return out;
 }
 
-// Called by the scanner with the posts that were newly saved in this scan. Never throws.
+function platformLabel(p) {
+  return p && p.platform === "discord" ? "Discord" : "Bluesky";
+}
+
+// Builds the notification text for one or more new leads. Works for Bluesky and Discord items.
+export function buildLeadPayload(items) {
+  const first = items[0];
+  const p = first.p;
+  const one = items.length === 1;
+  const plat = platformLabel(p);
+  const platforms = new Set(items.map((x) => platformLabel(x.p)));
+  const who = p.author_name || p.author_handle;
+  const where = plat === "Discord" && p.channel_name ? " in #" + p.channel_name : "";
+  const text = String(p.text).replace(/\s+/g, " ").slice(0, 110);
+  return {
+    title: one
+      ? first.s.intent.toUpperCase() + " lead on " + plat + ": " + first.s.category
+      : items.length + " new client leads" + (platforms.size === 1 ? " on " + plat : ""),
+    body: (one ? "" : "Latest: ") + who + where + ": " + text,
+    url: one && p.url ? p.url : "/"
+  };
+}
+
+// Called by the scanners with the items that were newly saved in this scan. Never throws.
 export async function notifyNew(env, items) {
   try {
     if (!items || !items.length || !configured(env)) return;
-    const first = items[0];
-    const p = first.p;
-    const who = p.author_name || p.author_handle;
-    const one = items.length === 1;
-    const payload = {
-      title: one ? first.s.intent.toUpperCase() + " lead: " + first.s.category : items.length + " new client leads",
-      body: (one ? "" : "Latest: ") + who + ": " + String(p.text).replace(/\s+/g, " ").slice(0, 110),
-      url: one && p.url ? p.url : "/"
-    };
-    const r = await pushToAll(env, payload);
+    const r = await pushToAll(env, buildLeadPayload(items));
     if (r.sent > 0) {
       const uris = items.map((x) => x.p.uri);
       await env.DB.prepare("UPDATE posts SET notified = 1 WHERE uri IN (" + uris.map(() => "?").join(",") + ")").bind(...uris).run();
