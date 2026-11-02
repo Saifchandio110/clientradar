@@ -63,7 +63,16 @@
     <div class="card">
       <h2>Discord status</h2>
       <div id="d-status-box"></div>
-      <button id="d-scan" class="btn">Scan Discord now</button>
+           <label for="d-notify">Notify me about new Discord leads</label>
+      <select id="d-notify">
+        <option value="all">All matches</option>
+        <option value="high">High intent only</option>
+        <option value="off">Off</option>
+      </select>
+      <div class="actions">
+        <button id="d-scan" class="btn">Scan Discord now</button>
+        <button id="d-sample" class="btn">Send sample notification</button>
+      </div>
       <p class="muted">Read-only: ClientRadar never sends messages or contacts anyone on Discord. Unsaved messages are kept 7 days and saved ones up to 30 days. Reply to people yourself, inside Discord, following each server's rules.</p>
     </div>
     <div class="card">
