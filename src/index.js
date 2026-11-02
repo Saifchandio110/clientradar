@@ -3,6 +3,7 @@ import { runScan } from "./scan.js";
 import { DEFAULT_KEYWORDS, DEFAULT_EXCLUDED, DEFAULT_MIN_SCORE } from "./scoring.js";
 import { handlePush } from "./push.js";
 import { scoreDiscordMessage } from "./discord_scoring.js";
+import { handleDiscord, runDiscordScan } from "./discord.js";
 
 const UPSERT = "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value";
 
