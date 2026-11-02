@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClientRadar: Discord admin</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header><h1>Discord admin</h1><a href="index.html" class="handle">Back to app</a></header>
+<main>
+  <div class="card">
+    <label for="tok">Admin token</label>
+    <input id="tok" type="password" autocomplete="off">
+    <label for="ch">Channels to monitor (one channel link or ID per line)</label>
+    <textarea id="ch" rows="5" placeholder="Long-press a channel in Discord, tap Copy Link, paste it here"></textarea>
+    <div class="actions">
+      <button id="save" class="btn">Save channels</button>
+      <button id="status" class="btn">Status</button>
+      <button id="scan" class="btn">Scan Discord now</button>
+      <button id="posts" class="btn">Stored messages</button>
+    </div>
+    <p id="msg" class="muted"></p>
+  </div>
+  <pre id="out" class="muted" style="white-space:pre-wrap;word-break:break-word"></pre>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+$("#tok").value = localStorage.getItem("cr_token") || "";
+async function call(path, method, body) {
+  const token = $("#tok").value.trim();
+  if (!token) { $("#msg").textContent = "Enter your admin token first."; return; }
+  localStorage.setItem("cr_token", token);
+  $("#msg").textContent = "Working...";
+  try {
+    const res = await fetch(path, { method: method, headers: { "x-admin-token": token, "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    const data = await res.json();
+    $("#msg").textContent = "HTTP " + res.status;
+    $("#out").textContent = JSON.stringify(data, null, 2);
+  } catch (e) { $("#msg").textContent = "FAILED: could not reach the server."; }
+}
+$("#save").addEventListener("click", () => call("/api/discord/channels", "PUT", { channels: $("#ch").value.split("\n").map((x) => x.trim()).filter(Boolean) }));
+$("#status").addEventListener("click", () => call("/api/discord/status", "GET"));
+$("#scan").addEventListener("click", () => call("/api/discord/scan", "POST"));
+$("#posts").addEventListener("click", () => call("/api/discord/posts", "GET"));
+</script>
+</body>
+</html>
