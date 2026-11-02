@@ -35,14 +35,19 @@ async function stats(env) {
   const r = await db.batch([
     db.prepare("SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END), 0) AS unread, COALESCE(SUM(CASE WHEN intent = 'high' THEN 1 ELSE 0 END), 0) AS high, COALESCE(SUM(is_saved), 0) AS saved FROM posts"),
     db.prepare("SELECT * FROM scan_runs WHERE status = 'ok' ORDER BY id DESC LIMIT 1"),
-    db.prepare("SELECT * FROM scan_runs WHERE status = 'error' ORDER BY id DESC LIMIT 1")
+    db.prepare("SELECT * FROM scan_runs WHERE status = 'error' ORDER BY id DESC LIMIT 1"),
+    db.prepare("SELECT platform, COUNT(*) AS c FROM posts GROUP BY platform")
   ]);
-  return { counts: r[0].results[0], lastSuccessfulScan: r[1].results[0] || null, lastFailedScan: r[2].results[0] || null };
+  const byPlatform = { bluesky: 0, discord: 0 };
+  for (const row of r[3].results) byPlatform[row.platform] = row.c;
+  return { counts: r[0].results[0], lastSuccessfulScan: r[1].results[0] || null, lastFailedScan: r[2].results[0] || null, byPlatform: byPlatform };
 }
 
 async function listPosts(env, url) {
   const where = ["(created_at >= ? OR is_saved = 1)"];
   const args = [new Date(Date.now() - 7 * 24 * 3600000).toISOString()];
+  const platform = url.searchParams.get("platform");
+  if (platform === "bluesky" || platform === "discord") { where.push("platform = ?"); args.push(platform); }
   const intent = url.searchParams.get("intent");
   if (intent === "high" || intent === "medium" || intent === "low") { where.push("intent = ?"); args.push(intent); }
   const cat = url.searchParams.get("category");
@@ -53,7 +58,7 @@ async function listPosts(env, url) {
   else if (status === "saved") where.push("is_saved = 1");
   const hours = parseInt(url.searchParams.get("hours") || "0", 10);
   if (hours > 0 && hours <= 8760) { where.push("detected_at >= ?"); args.push(new Date(Date.now() - hours * 3600000).toISOString()); }
-  const sql = "SELECT id, uri, author_handle, author_name, text, url, created_at, detected_at, intent, score, category, reasons, is_read, is_saved FROM posts"
+  const sql = "SELECT id, uri, author_handle, author_name, author_id, platform, guild_name, channel_name, text, url, created_at, detected_at, intent, score, category, reasons, is_read, is_saved FROM posts"
     + " WHERE " + where.join(" AND ")
     + " ORDER BY created_at DESC, id DESC LIMIT 50";
   const { results } = await env.DB.prepare(sql).bind(...args).all();
