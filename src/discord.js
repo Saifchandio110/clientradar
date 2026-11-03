@@ -155,6 +155,7 @@ export async function runDiscordScan(env) {
       let lastDone = after;
       let capped = false;
       let failed = false;
+      let human = 0, empty = 0;
 
       for (let page = 0; page < MAX_PAGES && !capped; page++) {
         const q = "/channels/" + ch.channel_id + "/messages?limit=" + (after ? 100 : FIRST_RUN_LIMIT) + (after ? "&after=" + after : "");
@@ -170,6 +171,11 @@ export async function runDiscordScan(env) {
         if (!msgs.length) break;
 
         for (const m of msgs) {
+          // Count people's messages that arrive with no text at all (a sign the Message Content Intent is off).
+          if (m.author && !m.author.bot && !m.webhook_id && (m.type === 0 || m.type === 19)) {
+            human++;
+            if (!String(m.content || "").trim()) empty++;
+          }
           const s = scoreDiscordMessage(m, cfg, { name: ch.channel_name });
           const made = Date.parse(m.timestamp);
           const fresh = !Number.isFinite(made) || made >= cutoffMs;
@@ -200,7 +206,13 @@ export async function runDiscordScan(env) {
         if (firstRun || msgs.length < 100) break;
       }
 
-      if (!failed) {
+      if (!failed && human >= 5 && empty === human) {
+        // Every recent message arrived without text. Do NOT move the cursor, so nothing is lost once this is fixed.
+        const hiddenMsg = "content_hidden: all recent messages arrived without text. If this channel really has text, turn ON Message Content Intent on the Bot page of the Discord Developer Portal, then scan again.";
+        problems.push((ch.channel_name || ch.channel_id) + ": " + hiddenMsg);
+        stmts.push(db.prepare("UPDATE discord_channels SET last_error = ?1, status = 'error', last_checked_at = ?2 WHERE channel_id = ?3")
+          .bind(hiddenMsg, new Date().toISOString(), ch.channel_id));
+      } else if (!failed) {
         okChannels++;
         const nowIso = new Date().toISOString();
         stmts.push(db.prepare("UPDATE discord_channels SET last_message_id = ?1, channel_name = ?2, guild_id = ?3, guild_name = ?4, status = 'ok', last_error = NULL, fail_count = 0, last_checked_at = ?5, last_ok_at = ?5 WHERE channel_id = ?6")
