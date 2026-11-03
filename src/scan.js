@@ -5,7 +5,7 @@ import { notifyNew } from "./push.js";
 const PDS = "https://bsky.social/xrpc";
 const PHRASES_PER_SCAN = 8;
 const MAX_PAGES = 2;
-const INSERT_CAP = 10;
+const INSERT_CAP = 30;
 const BLOCKED_AUTHORS = ["intentpond.bsky.social"];
 const MAX_AGE_MS = 7 * 24 * 3600000;
 const UPSERT = "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value";
@@ -28,6 +28,25 @@ export async function login(env) {
   const data = await res.json().catch(() => null);
   if (!data || !data.accessJwt) return { error: "Bluesky login response was unexpected." };
   return { jwt: data.accessJwt };
+}
+
+// Re-use the Bluesky login for up to ~2 hours instead of logging in on every scan.
+// Bluesky only allows about 300 logins per day, and a scan every 2 minutes would go over that.
+async function getSession(env, db) {
+  try {
+    const row = await db.prepare("SELECT value FROM settings WHERE key = 'bsky_jwt'").first();
+    if (row && row.value) {
+      const jwt = row.value;
+      const part = jwt.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+      const exp = JSON.parse(atob(part + "=".repeat((4 - part.length % 4) % 4))).exp * 1000;
+      if (Number.isFinite(exp) && exp - Date.now() > 10 * 60000) return { jwt: jwt };
+    }
+  } catch (e) {}
+  const fresh = await login(env);
+  if (fresh.jwt) {
+    try { await db.prepare(UPSERT).bind("bsky_jwt", fresh.jwt).run(); } catch (e) {}
+  }
+  return fresh;
 }
 
 function parseList(v, fallback, allowEmpty) {
@@ -76,6 +95,7 @@ async function searchPage(jwt, phrase, cursor, since) {
     return { error: "network", message: "network error" };
   }
   if (res.status === 429) return { error: "rate_limit", message: "rate limited" };
+  if (res.status === 401 || res.status === 400) return { error: "auth", message: "HTTP " + res.status };
   if (!res.ok) return { error: "http", message: "HTTP " + res.status };
   const data = await res.json().catch(() => null);
   if (!data) return { error: "parse", message: "invalid JSON" };
@@ -107,7 +127,7 @@ export async function runScan(env) {
 
   try {
     const cfg = await loadSettings(db);
-    const session = await login(env);
+    const session = await getSession(env, db);
     if (session.error) throw new Error(session.error);
 
     const n = cfg.keywords.length;
@@ -128,6 +148,10 @@ export async function runScan(env) {
         if (r.error) {
           errors.push(phrase + ": " + r.message);
           if (r.error === "rate_limit") break outer;
+          if (r.error === "auth") {
+            try { await db.prepare("DELETE FROM settings WHERE key = 'bsky_jwt'").run(); } catch (e) {}
+            break outer;
+          }
           break;
         }
         if (page === 0) okPhrases.push(phrase);
