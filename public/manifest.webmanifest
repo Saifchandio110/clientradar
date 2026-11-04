@@ -3,7 +3,7 @@
   "short_name": "ClientRadar",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0b1020",
-  "theme_color": "#0b1020",
+  "background_color": "#0f1c27",
+  "theme_color": "#0f1c27",
   "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
 }
