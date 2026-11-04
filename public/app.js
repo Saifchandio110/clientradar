@@ -21,9 +21,6 @@ function ago(iso) {
   if (m < 1440) return Math.round(m / 60) + "h ago";
   return Math.floor(m / 1440) + "d ago";
 }
-function kv(label, value) {
-  return h("div", { class: "kv" }, h("span", {}, label), h("span", {}, value));
-}
 
 async function api(path, opts) {
   const o = opts || {};
@@ -57,16 +54,14 @@ async function loadDashboard() {
       ["Scanner", failedLast ? "Last scan failed" : (ok ? "Healthy" : "No scans yet")]
     ];
     $("#stats").replaceChildren(...tiles.map((t) => h("div", { class: "stat" }, h("b", {}, String(t[1])), h("span", {}, t[0]))));
-    const bp = d.byPlatform || {};
-    $("#sources").replaceChildren(kv("Bluesky", (bp.bluesky || 0) + " saved"), kv("Discord", (bp.discord || 0) + " saved"));
     $("#scanner").textContent = failedLast
       ? "Last failure: " + (bad.error || "unknown")
-      : (ok ? "Last scan checked " + ok.posts_seen + " posts and saved " + ok.new_matches + " new matches." : "No scans yet. Tap Scan Bluesky now.");
+      : (ok ? "Last scan checked " + ok.posts_seen + " posts and saved " + ok.new_matches + " new matches." : "No scans yet. Tap Scan now.");
     msg("");
   } catch (e) { msg(e.message); }
 }
 
-/* ---------- Cards (shared by the Feed and Discord screens) ---------- */
+/* ---------- Feed ---------- */
 async function patch(id, body) {
   try {
     await api("/api/posts/" + id, { method: "PATCH", body: body });
@@ -74,25 +69,9 @@ async function patch(id, body) {
   } catch (e) { msg(e.message); }
 }
 
-async function forget(p) {
-  if (!confirm("Delete everything stored from this Discord user (" + p.author_handle + ")?")) return;
-  try {
-    const r = await api("/api/discord/author/" + p.author_id, { method: "DELETE" });
-    await reload();
-    msg("Removed " + r.deleted + " stored message(s) from that person.");
-  } catch (e) { msg(e.message); }
-}
-
 function card(p) {
-  const isD = p.platform === "discord";
-  const who = p.author_name || p.author_handle;
-  const showHandle = !isD || who !== p.author_handle;
   return h("div", { class: "card i-" + p.intent + (p.is_read ? "" : " unread") },
-    h("div", { class: "row" },
-      h("span", { class: "badge plat plat-" + (isD ? "discord" : "bluesky") }, isD ? "Discord" : "Bluesky"),
-      h("strong", {}, who),
-      showHandle ? h("span", { class: "handle" }, isD ? p.author_handle : "@" + p.author_handle) : ""),
-    isD ? h("div", { class: "where" }, (p.guild_name || "Unknown server") + " \u00b7 #" + (p.channel_name || "unknown-channel")) : "",
+    h("div", { class: "row" }, h("strong", {}, p.author_name || p.author_handle), h("span", { class: "handle" }, "@" + p.author_handle)),
     h("div", { class: "row" },
       h("span", { class: "badge " + p.intent }, p.intent.toUpperCase() + " " + p.score),
       h("span", { class: "badge cat" }, p.category || "Other"),
@@ -100,82 +79,22 @@ function card(p) {
     h("p", { class: "text" }, p.text),
     h("div", { class: "reasons" }, "Why: " + p.reasons.join(", ")),
     h("div", { class: "actions" },
-      p.url ? h("a", { href: p.url, target: "_blank", rel: "noopener noreferrer" }, isD ? "Open in Discord" : "Open original post") : "",
+      p.url ? h("a", { href: p.url, target: "_blank", rel: "noopener noreferrer" }, "Open original post") : "",
       h("button", { class: "alt", onclick: () => patch(p.id, { is_saved: !p.is_saved }) }, p.is_saved ? "Unsave" : "Save"),
-      h("button", { class: "alt", onclick: () => patch(p.id, { is_read: !p.is_read }) }, p.is_read ? "Mark unread" : "Mark read"),
-      isD && p.author_id ? h("button", { class: "alt", onclick: () => forget(p) }, "Forget person") : ""));
+      h("button", { class: "alt", onclick: () => patch(p.id, { is_read: !p.is_read }) }, p.is_read ? "Mark unread" : "Mark read")));
 }
 
-function renderCards(box, posts, emptyText) {
-  if (!posts.length) { box.replaceChildren(h("p", { class: "muted" }, emptyText)); return; }
-  box.replaceChildren(...posts.map(card));
-}
-
-/* ---------- Feed (all platforms) ---------- */
 async function loadFeed() {
   const q = new URLSearchParams();
-  if ($("#f-platform").value !== "all") q.set("platform", $("#f-platform").value);
   if ($("#f-intent").value !== "all") q.set("intent", $("#f-intent").value);
   if ($("#f-cat").value !== CATS[0]) q.set("category", $("#f-cat").value);
   if ($("#f-status").value !== "all") q.set("status", $("#f-status").value);
   if ($("#f-date").value !== "all") q.set("hours", $("#f-date").value);
   try {
     const d = await api("/api/posts?" + q.toString());
-    renderCards($("#cards"), d.posts, "No posts match these filters yet.");
-    msg("");
-  } catch (e) { msg(e.message); }
-}
-
-/* ---------- Discord ---------- */
-function chState(c) {
-  if (c.status === "ok") return ["OK", "ok"];
-  if (c.status === "paused") return ["PAUSED", "bad"];
-  if (c.status === "error") return ["PROBLEM", "bad"];
-  return ["WAITING", "wait"];
-}
-
-function renderDiscordStatus(s) {
-  const ok = s.lastSuccessfulRun, bad = s.lastFailedRun;
-  const failedLast = bad && (!ok || bad.id > ok.id);
-  const rows = [
-    kv("Bot token", s.botTokenConfigured ? "Configured" : "Not configured: add DISCORD_BOT_TOKEN in Cloudflare"),
-    kv("Channels monitored", String(s.channels.length)),
-    kv("Last successful check", ok ? ago(ok.finished_at) : "Never"),
-    kv("Saved messages", s.counts.total + " (" + s.counts.unread + " new, " + s.counts.saved + " saved)")
-  ];
-  if (failedLast) rows.push(kv("Last problem", (bad.error || "unknown") + " (" + ago(bad.finished_at || bad.started_at) + ")"));
-  $("#d-status-box").replaceChildren(...rows);
-    $("#d-notify").value = s.notify || "all";
-
-  if (!s.channels.length) {
-    $("#d-channels").replaceChildren(h("p", { class: "muted" }, "No channels yet. Add some below."));
-  } else {
-    $("#d-channels").replaceChildren(...s.channels.map((c) => {
-      const [label, cls] = chState(c);
-      const name = (c.guild_name ? c.guild_name + " \u00b7 " : "") + (c.channel_name ? "#" + c.channel_name : "Channel " + c.channel_id);
-      let diag = "";
-      if (c.status === "paused") diag = "Paused after repeated problems. Fix the access, then tap Save channels again. " + (c.last_error ? c.last_error.replace(/^[a-z_0-9]+:\s*/, "") : "");
-      else if (c.status === "error" && c.last_error) diag = c.last_error.replace(/^[a-z_0-9]+:\s*/, "");
-      return h("div", { class: "chan" },
-        h("div", { class: "row" }, h("span", { class: "badge " + cls }, label), h("strong", {}, name)),
-        h("div", { class: "handle" }, c.last_ok_at ? "Last read " + ago(c.last_ok_at) : "Not read yet"),
-        diag ? h("div", { class: "diag" }, diag) : "");
-    }));
-  }
-  const box = $("#d-ch");
-  if (!box.dataset.dirty) {
-    box.value = s.channels.map((c) => (c.guild_id ? "https://discord.com/channels/" + c.guild_id + "/" + c.channel_id : c.channel_id)).join("\n");
-  }
-}
-
-async function loadDiscord() {
-  const q = new URLSearchParams({ platform: "discord" });
-  if ($("#d-intent").value !== "all") q.set("intent", $("#d-intent").value);
-  if ($("#d-state").value !== "all") q.set("status", $("#d-state").value);
-  try {
-    const [s, d] = await Promise.all([api("/api/discord/status"), api("/api/posts?" + q.toString())]);
-    renderDiscordStatus(s);
-    renderCards($("#dcards"), d.posts, "No Discord messages match yet. Add channels above once the bot is in a server.");
+    const box = $("#cards");
+    if (!d.posts.length) box.replaceChildren(h("p", { class: "muted" }, "No posts match these filters yet."));
+    else box.replaceChildren(...d.posts.map(card));
     msg("");
   } catch (e) { msg(e.message); }
 }
@@ -199,7 +118,7 @@ async function loadActivity() {
       h("div", { class: "card" },
         h("div", { class: "row" },
           h("span", { class: "badge " + (r.status === "ok" ? "high" : r.status === "error" ? "low" : "medium") }, r.status.toUpperCase()),
-          h("span", { class: "handle" }, "Bluesky \u00b7 " + ago(r.started_at))),
+          h("span", { class: "handle" }, ago(r.started_at))),
         h("div", {}, "Searches: " + r.queries_run + " | Posts processed: " + r.posts_seen + " | New matches: " + r.new_matches),
         r.error ? h("div", { class: "reasons" }, "Error: " + r.error) : "")));
     msg("");
@@ -207,7 +126,7 @@ async function loadActivity() {
 }
 
 /* ---------- Navigation and buttons ---------- */
-const LOADERS = { dashboard: loadDashboard, feed: loadFeed, discord: loadDiscord, settings: loadSettings, activity: loadActivity };
+const LOADERS = { dashboard: loadDashboard, feed: loadFeed, settings: loadSettings, activity: loadActivity };
 function show(view) {
   current = view;
   document.querySelectorAll("nav button, .view").forEach((e) => e.classList.remove("active"));
@@ -217,12 +136,10 @@ function show(view) {
 }
 
 $("#f-cat").replaceChildren(...CATS.map((c) => h("option", { value: c }, c)));
-for (const id of ["#f-platform", "#f-intent", "#f-cat", "#f-status", "#f-date"]) $(id).addEventListener("change", loadFeed);
-for (const id of ["#d-intent", "#d-state"]) $(id).addEventListener("change", loadDiscord);
+for (const id of ["#f-intent", "#f-cat", "#f-status", "#f-date"]) $(id).addEventListener("change", loadFeed);
 document.querySelectorAll("nav button").forEach((b) => b.addEventListener("click", () => show(b.dataset.view)));
 $("#tok").value = localStorage.getItem("cr_token") || "";
 $("#perm").textContent = "Notification" in window ? Notification.permission : "not supported in this browser";
-$("#d-ch").addEventListener("input", () => { $("#d-ch").dataset.dirty = "1"; });
 
 $("#save-token").addEventListener("click", () => {
   localStorage.setItem("cr_token", $("#tok").value.trim());
@@ -237,45 +154,11 @@ $("#save-settings").addEventListener("click", async () => {
   } catch (e) { msg(e.message); }
 });
 $("#scan-now").addEventListener("click", async () => {
-  msg("Scanning Bluesky... this can take several seconds.");
+  msg("Scanning... this can take several seconds.");
   try {
     const r = await api("/api/scan", { method: "POST" });
     await loadDashboard();
     msg(r.status === "ok" ? "Scan finished: " + r.newlySaved + " new matches." : "Scan failed: " + r.error);
-  } catch (e) { msg(e.message); }
-});
-$("#d-scan").addEventListener("click", async () => {
-  msg("Scanning Discord...");
-  try {
-    const r = await api("/api/discord/scan", { method: "POST" });
-    await loadDiscord();
-    await loadDashboard();
-    if (r.status === "ok") {
-      msg("Discord scan finished: " + r.newlySaved + " new message(s) saved." + (r.problems && r.problems.length ? " Problems: " + r.problems.join(" | ") : ""));
-    } else {
-      msg("Discord scan failed: " + r.error);
-    }
-  } catch (e) { msg(e.message); }
-});
-$("#d-save").addEventListener("click", async () => {
-  const lines = $("#d-ch").value.split("\n").map((x) => x.trim()).filter(Boolean);
-  try {
-    await api("/api/discord/channels", { method: "PUT", body: { channels: lines } });
-    delete $("#d-ch").dataset.dirty;
-    await loadDiscord();
-    msg("Channels saved. They are read on the next Discord scan.");
-  } catch (e) { msg(e.message); }
-});
-$("#d-notify").addEventListener("change", async () => {
-  try {
-    await api("/api/discord/notify", { method: "PUT", body: { mode: $("#d-notify").value } });
-    msg("Discord notification preference saved.");
-  } catch (e) { msg(e.message); }
-});
-$("#d-sample").addEventListener("click", async () => {
-  try {
-    const r = await api("/api/discord/notify-test", { method: "POST" });
-    msg(!r.devices ? "No device is subscribed yet. Open Settings and tap Enable notifications first." : "Sample sent to " + r.sent + " of " + r.devices + " device(s).");
   } catch (e) { msg(e.message); }
 });
 $("#mark-all").addEventListener("click", async () => {
