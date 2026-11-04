@@ -73,21 +73,3 @@ nav button{flex:1;display:flex;flex-direction:column;align-items:center;justify-
 nav button.active{color:#fff;background:rgba(255,225,77,.1);box-shadow:inset 0 3px 0 var(--hl)}
 nav button.active svg{stroke:var(--hl)}
 nav svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
-
-/* ---- Discord screens and platform labels ---- */
-.badge.plat{background:transparent}
-.badge.plat-bluesky{color:var(--sky);border-color:var(--sky)}
-.badge.plat-discord{color:#d5cbff;border-color:#b9a7ff}
-.badge.ok{color:#7dffd0;border-color:#7dffd0}
-.badge.bad{color:var(--pin);border-color:var(--pin)}
-.badge.wait{color:var(--muted)}
-.filters #f-platform{grid-column:1/-1}
-.where{color:var(--muted);font-size:14px;margin:-2px 0 8px;overflow-wrap:anywhere}
-.chan{padding:10px 0;border-top:1.5px dashed var(--line)}
-.chan:first-child{border-top:0;padding-top:0}
-.chan .diag{color:#ffe9a8;font-size:14px;margin-top:4px;overflow-wrap:anywhere}
-.kv{display:flex;justify-content:space-between;gap:14px;padding:7px 0;border-top:1.5px dashed var(--line)}
-.kv:first-child{border-top:0;padding-top:0}
-.kv span:first-child{color:var(--muted);flex:none}
-.kv span:last-child{text-align:right;overflow-wrap:anywhere}
-nav button{font-size:11px;padding:0 2px}
