@@ -1,8 +1,6 @@
 import { runScan } from "./scan.js";
 import { DEFAULT_KEYWORDS, DEFAULT_EXCLUDED, DEFAULT_MIN_SCORE } from "./scoring.js";
 import { handlePush } from "./push.js";
-import { scoreDiscordMessage } from "./discord_scoring.js";
-import { handleDiscord, runDiscordScan } from "./discord.js";
 
 const UPSERT = "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value";
 
@@ -35,19 +33,14 @@ async function stats(env) {
   const r = await db.batch([
     db.prepare("SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END), 0) AS unread, COALESCE(SUM(CASE WHEN intent = 'high' THEN 1 ELSE 0 END), 0) AS high, COALESCE(SUM(is_saved), 0) AS saved FROM posts"),
     db.prepare("SELECT * FROM scan_runs WHERE status = 'ok' ORDER BY id DESC LIMIT 1"),
-    db.prepare("SELECT * FROM scan_runs WHERE status = 'error' ORDER BY id DESC LIMIT 1"),
-    db.prepare("SELECT platform, COUNT(*) AS c FROM posts GROUP BY platform")
+    db.prepare("SELECT * FROM scan_runs WHERE status = 'error' ORDER BY id DESC LIMIT 1")
   ]);
-  const byPlatform = { bluesky: 0, discord: 0 };
-  for (const row of r[3].results) byPlatform[row.platform] = row.c;
-  return { counts: r[0].results[0], lastSuccessfulScan: r[1].results[0] || null, lastFailedScan: r[2].results[0] || null, byPlatform: byPlatform };
+  return { counts: r[0].results[0], lastSuccessfulScan: r[1].results[0] || null, lastFailedScan: r[2].results[0] || null };
 }
 
 async function listPosts(env, url) {
   const where = ["(created_at >= ? OR is_saved = 1)"];
   const args = [new Date(Date.now() - 7 * 24 * 3600000).toISOString()];
-  const platform = url.searchParams.get("platform");
-  if (platform === "bluesky" || platform === "discord") { where.push("platform = ?"); args.push(platform); }
   const intent = url.searchParams.get("intent");
   if (intent === "high" || intent === "medium" || intent === "low") { where.push("intent = ?"); args.push(intent); }
   const cat = url.searchParams.get("category");
@@ -58,7 +51,7 @@ async function listPosts(env, url) {
   else if (status === "saved") where.push("is_saved = 1");
   const hours = parseInt(url.searchParams.get("hours") || "0", 10);
   if (hours > 0 && hours <= 8760) { where.push("detected_at >= ?"); args.push(new Date(Date.now() - hours * 3600000).toISOString()); }
-  const sql = "SELECT id, uri, author_handle, author_name, author_id, platform, guild_name, channel_name, text, url, created_at, detected_at, intent, score, category, reasons, is_read, is_saved FROM posts"
+  const sql = "SELECT id, uri, author_handle, author_name, text, url, created_at, detected_at, intent, score, category, reasons, is_read, is_saved FROM posts"
     + " WHERE " + where.join(" AND ")
     + " ORDER BY created_at DESC, id DESC LIMIT 50";
   const { results } = await env.DB.prepare(sql).bind(...args).all();
@@ -156,19 +149,6 @@ export default {
       const m = /^\/api\/posts\/(\d+)$/.exec(path);
       if (m && request.method === "PATCH") return await patchPost(env, request, Number(m[1]));
 
-      // Discord: try-a-message page (only scores text, never contacts Discord)
-      if (path === "/api/discord/score-test" && request.method === "POST") {
-        let b;
-        try { b = await request.json(); } catch (e) { return json({ error: "Invalid JSON." }, 400); }
-        if (!b || typeof b.text !== "string" || !b.text.trim() || b.text.length > 2000) return json({ error: "Send text of 1 to 2000 characters." }, 400);
-        const st = await getSettings(env);
-        const channel = { name: typeof b.channel === "string" ? b.channel.slice(0, 80) : "" };
-        const msg = { id: "test", type: 0, content: b.text, author: { bot: false } };
-        return json(scoreDiscordMessage(msg, { excluded: st.excluded, keywords: st.keywords, minScore: st.min_score }, channel));
-      }
-      // Discord: channels, status, scan, stored messages, forget a person
-      if (path.startsWith("/api/discord/")) return await handleDiscord(request, env, path);
-
       if (path.startsWith("/api/push/")) return await handlePush(request, env, ctx, path);
       if (path === "/api/settings" && request.method === "GET") return json(await getSettings(env));
       if (path === "/api/settings" && request.method === "PUT") return await putSettings(env, request);
@@ -182,14 +162,8 @@ export default {
     }
   },
 
-  // Runs on the cron schedules in wrangler.jsonc.
+  // Runs on the cron schedule in wrangler.jsonc.
   async scheduled(event, env, ctx) {
-    // Discord has its own schedule, so it has its own request budget.
-    if (event.cron === "7,22,37,52 * * * *") {
-      if (env.DB && env.DISCORD_BOT_TOKEN) ctx.waitUntil(runDiscordScan(env));
-      return;
-    }
-    // Every other schedule is the Bluesky scan.
     if (!env.DB || !env.BSKY_IDENTIFIER || !env.BSKY_APP_PASSWORD) return;
     ctx.waitUntil(runScan(env));
   }
