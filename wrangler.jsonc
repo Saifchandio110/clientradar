@@ -1,7 +1,7 @@
 {
   "name": "clientradar",
   "keep_vars": true,
-  "triggers": { "crons": ["*/2 * * * *"] },
+  "triggers": { "crons": ["* * * * *"] },
   "main": "src/index.js",
   "compatibility_date": "2026-10-29",
   "assets": {
