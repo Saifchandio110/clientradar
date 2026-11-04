@@ -110,10 +110,10 @@ function cleanList(v, max) {
 async function putSettings(env, request) {
   let b;
   try { b = await request.json(); } catch (e) { return json({ error: "Invalid JSON." }, 400); }
-  const keywords = cleanList(b.keywords, 40);
+  const keywords = cleanList(b.keywords, 1000);
   const excluded = cleanList(b.excluded, 40);
   const min = Number(b.min_score);
-  if (!keywords || !keywords.length) return json({ error: "Keywords: 1 to 40 lines, each 2 to 80 characters." }, 400);
+  if (!keywords || !keywords.length) return json({ error: "Keywords: 1 to 1000 lines, each 2 to 80 characters." }, 400);
   if (!excluded) return json({ error: "Excluded phrases: up to 40 lines, each 2 to 80 characters." }, 400);
   if (!Number.isInteger(min) || min < 0 || min > 20) return json({ error: "Minimum score must be a whole number from 0 to 20." }, 400);
   await env.DB.batch([
