@@ -128,11 +128,11 @@ export async function pushToAll(env, payload) {
   return out;
 }
 
-function platformLabel(p) {
-  return p && p.platform === "discord" ? "Discord" : "Bluesky";
+function platformLabel() {
+  return "Bluesky";
 }
 
-// Builds the notification text for one or more new leads. Works for Bluesky and Discord items.
+// Builds the notification text for one or more new leads.
 export function buildLeadPayload(items) {
   const first = items[0];
   const p = first.p;
@@ -140,7 +140,7 @@ export function buildLeadPayload(items) {
   const plat = platformLabel(p);
   const platforms = new Set(items.map((x) => platformLabel(x.p)));
   const who = p.author_name || p.author_handle;
-  const where = plat === "Discord" && p.channel_name ? " in #" + p.channel_name : "";
+   const where = "";
   const text = String(p.text).replace(/\s+/g, " ").slice(0, 110);
   return {
     title: one
