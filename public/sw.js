@@ -13,6 +13,6 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   let url = (event.notification.data && event.notification.data.url) || "/";
-  if (!(url.startsWith("https://bsky.app/") || url.startsWith("https://discord.com/channels/") || url.startsWith("/"))) url = "/";
+  if (!(url.startsWith("https://bsky.app/") || url.startsWith("/"))) url = "/";
   event.waitUntil(self.clients.openWindow(url));
 });
