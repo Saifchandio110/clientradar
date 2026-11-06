@@ -60,6 +60,7 @@ label{display:block;margin:14px 0 6px;color:var(--muted);font-size:14px;font-wei
 .btn,.actions button,.actions a{display:inline-flex;align-items:center;justify-content:center;min-height:46px;padding:0 20px;border:0;border-radius:12px;background:var(--amber);color:var(--amber-ink);font:inherit;font-weight:700;text-decoration:none}
 .btn:active,.actions button:active,.actions a:active{transform:scale(.97)}
 .actions button.alt{background:transparent;color:var(--text);border:1px solid var(--line)}
+.actions button.danger{color:var(--coral);border-color:rgba(255,111,94,.45)}
 .btn:disabled{opacity:.45}
 .card .btn{margin-top:10px}
 
