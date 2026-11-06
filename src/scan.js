@@ -69,7 +69,8 @@ async function loadSettings(db) {
     excluded: parseList(m.excluded, DEFAULT_EXCLUDED, true),
     minScore: m.min_score != null && Number.isFinite(min) ? min : DEFAULT_MIN_SCORE,
     offset: Number(m.rotate_offset) || 0,
-    phraseLastRun: last
+    phraseLastRun: last,
+    deleted: (() => { try { const d = JSON.parse(m.deleted_uris || "[]"); return new Set(Array.isArray(d) ? d : []); } catch (e) { return new Set(); } })()
   };
 }
 
@@ -166,6 +167,7 @@ export async function runScan(env) {
     const keep = [];
     for (const p of found.values()) {
             if (BLOCKED_AUTHORS.includes(String(p.author_handle).toLowerCase())) continue;
+      if (cfg.deleted.has(p.uri)) continue;
       const made = Date.parse(p.created_at);
       if (Number.isFinite(made) && made < cutoffMs) continue; // older than 7 days
       const s = scorePost(p.text, cfg, p);
