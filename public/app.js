@@ -69,6 +69,13 @@ async function patch(id, body) {
   } catch (e) { msg(e.message); }
 }
 
+async function removePost(id) {
+  try {
+    await api("/api/posts/" + id, { method: "DELETE" });
+    await reload();
+  } catch (e) { msg(e.message); }
+}
+
 function card(p) {
   return h("div", { class: "card i-" + p.intent + (p.is_read ? "" : " unread") },
     h("div", { class: "row" }, h("strong", {}, p.author_name || p.author_handle), h("span", { class: "handle" }, "@" + p.author_handle)),
@@ -81,7 +88,8 @@ function card(p) {
     h("div", { class: "actions" },
       p.url ? h("a", { href: p.url, target: "_blank", rel: "noopener noreferrer" }, "Open original post") : "",
       h("button", { class: "alt", onclick: () => patch(p.id, { is_saved: !p.is_saved }) }, p.is_saved ? "Unsave" : "Save"),
-      h("button", { class: "alt", onclick: () => patch(p.id, { is_read: !p.is_read }) }, p.is_read ? "Mark unread" : "Mark read")));
+      h("button", { class: "alt", onclick: () => patch(p.id, { is_read: !p.is_read }) }, p.is_read ? "Mark unread" : "Mark read"),
+      h("button", { class: "alt danger", onclick: () => removePost(p.id) }, "Delete")));
 }
 
 async function loadFeed() {
