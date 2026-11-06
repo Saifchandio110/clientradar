@@ -75,6 +75,25 @@ async function patchPost(env, request, id) {
   return json({ ok: true, changed: r.meta.changes });
 }
 
+async function deletePost(env, id) {
+  const db = env.DB;
+  const row = await db.prepare("SELECT uri FROM posts WHERE id = ?").bind(id).first();
+  if (!row) return json({ ok: true, deleted: 0 });
+  // Remember the deleted post so a later scan does not bring it back.
+  let list = [];
+  try {
+    const v = await db.prepare("SELECT value FROM settings WHERE key = 'deleted_uris'").first();
+    if (v && v.value) list = JSON.parse(v.value);
+  } catch (e) {}
+  if (!Array.isArray(list)) list = [];
+  list.push(row.uri);
+  await db.batch([
+    db.prepare(UPSERT).bind("deleted_uris", JSON.stringify(list.slice(-3000))),
+    db.prepare("DELETE FROM posts WHERE id = ?").bind(id)
+  ]);
+  return json({ ok: true, deleted: 1 });
+}
+
 function parseList(v, fallback, allowEmpty) {
   try {
     const x = JSON.parse(v);
@@ -148,6 +167,7 @@ export default {
       }
       const m = /^\/api\/posts\/(\d+)$/.exec(path);
       if (m && request.method === "PATCH") return await patchPost(env, request, Number(m[1]));
+      if (m && request.method === "DELETE") return await deletePost(env, Number(m[1]));
 
       if (path.startsWith("/api/push/")) return await handlePush(request, env, ctx, path);
       if (path === "/api/settings" && request.method === "GET") return json(await getSettings(env));
