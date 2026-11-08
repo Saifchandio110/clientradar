@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#0f1c27">
+<title>ClientRadar Admin</title>
+<link rel="stylesheet" href="styles.css">
+<style>
+  body { padding-bottom: 32px; }
+  .tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .tile { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 16px; }
+  .tile b { display: block; font-size: 32px; line-height: 1.15; color: #fff; letter-spacing: -.5px; }
+  .tile.hero { grid-column: 1 / -1; background: var(--deep); }
+  .tile.hero b { font-size: 56px; color: var(--amber); }
+  .tile span { color: var(--muted); font-size: 14px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); margin-right: 6px; }
+  .dot.on { background: var(--teal); }
+  .line { color: var(--muted); font-size: 14px; margin: 2px 0; }
+  .line strong { color: var(--text); font-weight: 600; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Admin</h1>
+  <span class="badge high">DEVICES</span>
+</header>
+<main>
+  <p id="msg" class="muted"></p>
+
+  <section id="login" class="card">
+    <h2>Admin login</h2>
+    <label for="pw">Admin password</label>
+    <input id="pw" type="password" autocomplete="off">
+    <button id="login-btn" class="btn">Log in</button>
+    <p class="muted"><a href="/">Back to ClientRadar</a></p>
+  </section>
+
+  <section id="panel" class="hidden">
+    <div id="tiles" class="tiles"></div>
+    <div class="actions" style="margin:0 0 16px">
+      <button id="refresh" class="alt">Refresh</button>
+      <button id="logout" class="alt">Log out</button>
+    </div>
+    <div id="list"></div>
+  </section>
+</main>
+<script src="admin.js"></script>
+</body>
+</html>
