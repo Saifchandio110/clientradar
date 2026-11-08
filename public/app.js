@@ -153,6 +153,7 @@ $("#save-token").addEventListener("click", () => {
   localStorage.setItem("cr_token", $("#tok").value.trim());
   msg("Token saved on this phone.");
   loadSettings();
+  pingDevice(true);
 });
 $("#save-settings").addEventListener("click", async () => {
   const lines = (id) => $(id).value.split("\n").map((x) => x.trim()).filter(Boolean);
@@ -216,5 +217,50 @@ async function testPush(delay) {
 $("#test-push").addEventListener("click", () => testPush(0));
 $("#test-push-delay").addEventListener("click", () => testPush(15));
 
-if (localStorage.getItem("cr_token")) loadDashboard();
+/* ---------- Device registration (feeds the admin panel) ---------- */
+function deviceId() {
+  let id = localStorage.getItem("cr_device_id");
+  if (!id) {
+    id = crypto.randomUUID ? crypto.randomUUID() : ("d" + Date.now() + "-" + Math.random().toString(36).slice(2, 12) + "xxxxxx");
+    localStorage.setItem("cr_device_id", id);
+  }
+  return id;
+}
+
+async function deviceInfo() {
+  const ua = navigator.userAgent || "";
+  const platform = /Android/i.test(ua) ? "Android" : /iPhone|iPad|iPod/i.test(ua) ? "iOS" : /Windows/i.test(ua) ? "Windows" : /Mac OS X|Macintosh/i.test(ua) ? "macOS" : /Linux/i.test(ua) ? "Linux" : "Unknown";
+  const browser = /Edg\//.test(ua) ? "Edge" : /OPR\/|Opera/.test(ua) ? "Opera" : /SamsungBrowser/.test(ua) ? "Samsung Internet" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "Browser";
+  let model = "";
+  try {
+    const u = navigator.userAgentData;
+    if (u && u.getHighEntropyValues) model = ((await u.getHighEntropyValues(["model"])).model || "").trim();
+  } catch (e) {}
+  const custom = (localStorage.getItem("cr_device_name") || "").trim();
+  return {
+    id: deviceId(),
+    name: custom || model || (platform + " device"),
+    platform: platform,
+    browser: browser,
+    installed: !!(window.matchMedia && window.matchMedia("(display-mode: standalone)").matches)
+  };
+}
+
+let lastPing = 0;
+async function pingDevice(force) {
+  if (!force && Date.now() - lastPing < 30 * 60000) return;
+  lastPing = Date.now();
+  try { await api("/api/device/ping", { method: "POST", body: await deviceInfo() }); } catch (e) {}
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && localStorage.getItem("cr_token")) pingDevice(false);
+});
+$("#dev-name").value = localStorage.getItem("cr_device_name") || "";
+$("#save-dev").addEventListener("click", async () => {
+  localStorage.setItem("cr_device_name", $("#dev-name").value.trim());
+  await pingDevice(true);
+  msg("Device name saved.");
+});
+
+if (localStorage.getItem("cr_token")) { loadDashboard(); pingDevice(false); }
 else show("settings");
