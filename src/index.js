@@ -1,6 +1,7 @@
 import { runScan } from "./scan.js";
 import { DEFAULT_KEYWORDS, DEFAULT_EXCLUDED, DEFAULT_MIN_SCORE } from "./scoring.js";
 import { handlePush } from "./push.js";
+import { registerDevice, handleAdmin } from "./devices.js";
 
 const UPSERT = "INSERT INTO settings (key, value) VALUES (?1, ?2) ON CONFLICT(key) DO UPDATE SET value = excluded.value";
 
@@ -150,8 +151,13 @@ export default {
       const path = url.pathname;
       if (!path.startsWith("/api/")) return env.ASSETS.fetch(request);
 
+      // Admin panel has its own login, so it is handled before the normal app token check.
+      if (path.startsWith("/api/admin/")) return await handleAdmin(request, env, path);
+
       const denied = checkAdmin(request, env);
       if (denied) return denied;
+
+      if (path === "/api/device/ping" && request.method === "POST") return await registerDevice(request, env);
 
       if (path === "/api/scan") {
         if (request.method !== "POST") return json({ error: "Use POST." }, 405);
