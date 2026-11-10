@@ -209,6 +209,7 @@ $("#enable-push").addEventListener("click", async () => {
 async function testPush(delay) {
   try {
     const r = await api("/api/push/test" + (delay ? "?delay=" + delay : ""), { method: "POST" });
+    if (r.ntfy && !delay) { pmsg(r.ok ? "Sent through ntfy. It should pop up in the ntfy app now." : "ntfy did not accept the message (HTTP " + r.status + "). Check the NTFY_TOPIC secret."); return; }
     if (delay) pmsg("Scheduled. Close Chrome or lock your phone now. A notification should arrive in about " + delay + " seconds.");
     else if (!r.devices) pmsg("No device is subscribed yet. Tap Enable notifications first.");
     else pmsg("Sent to " + r.sent + " of " + r.devices + " device(s). Push service replies: " + r.statuses.join(", ") + (r.detail ? " (" + r.detail + ")" : ""));
