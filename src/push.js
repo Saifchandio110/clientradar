@@ -151,12 +151,59 @@ export function buildLeadPayload(items) {
   };
 }
 
+// ---------- ntfy (phone notifications through the ntfy app) ----------
+// Set the secret NTFY_TOPIC (a long random name). Optional: NTFY_SERVER (default https://ntfy.sh) and NTFY_TOKEN.
+function ntfyConfigured(env) {
+  return !!(env.NTFY_TOPIC && /^[A-Za-z0-9_-]{8,64}$/.test(env.NTFY_TOPIC));
+}
+
+async function ntfyPublish(env, msg) {
+  const base = String(env.NTFY_SERVER || "https://ntfy.sh").replace(/\/+$/, "");
+  if (!/^https:\/\//.test(base)) return { ok: false, status: 0 };
+  const headers = { "content-type": "application/json" };
+  if (env.NTFY_TOKEN) headers.authorization = "Bearer " + env.NTFY_TOKEN;
+  try {
+    const res = await fetch(base, { method: "POST", headers: headers, body: JSON.stringify(Object.assign({ topic: env.NTFY_TOPIC }, msg)) });
+    return { ok: res.ok, status: res.status };
+  } catch (e) {
+    return { ok: false, status: 0 };
+  }
+}
+
+// One notification per lead (up to 5), plus one summary if there are more. Returns how many were delivered.
+async function ntfyLeads(env, items) {
+  let sent = 0;
+  for (const it of items.slice(0, 5)) {
+    const p = it.p;
+    const high = it.s.intent === "high";
+    const r = await ntfyPublish(env, {
+      title: it.s.intent.toUpperCase() + " lead: " + it.s.category,
+      message: (p.author_name || p.author_handle) + ": " + String(p.text).replace(/\s+/g, " ").slice(0, 300),
+      priority: high ? 4 : 3,
+      tags: [high ? "fire" : "mag"],
+      click: p.url || undefined
+    });
+    if (r.ok) sent++;
+  }
+  if (items.length > 5) {
+    const r = await ntfyPublish(env, { title: (items.length - 5) + " more new leads", message: "Open ClientRadar to see them.", priority: 3 });
+    if (r.ok) sent++;
+  }
+  return sent;
+}
+
 // Called by the scanners with the items that were newly saved in this scan. Never throws.
+// ntfy is used first when it is set up. Browser push is the fallback if ntfy is off or did not deliver.
 export async function notifyNew(env, items) {
   try {
-    if (!items || !items.length || !configured(env)) return;
-    const r = await pushToAll(env, buildLeadPayload(items));
-    if (r.sent > 0) {
+    if (!items || !items.length) return;
+    let delivered = 0;
+    if (ntfyConfigured(env)) delivered += await ntfyLeads(env, items);
+    if (!delivered && configured(env)) {
+      const r = await pushToAll(env, buildLeadPayload(items));
+      delivered += r.sent;
+    }
+    if (delivered > 0) {
       const uris = items.map((x) => x.p.uri);
       await env.DB.prepare("UPDATE posts SET notified = 1 WHERE uri IN (" + uris.map(() => "?").join(",") + ")").bind(...uris).run();
     }
@@ -186,8 +233,21 @@ export async function handlePush(request, env, ctx, path) {
   }
 
   if (path === "/api/push/test" && request.method === "POST") {
-    if (!configured(env)) return json({ error: "Push is not configured. Add the VAPID secrets." }, 500);
+    const ntfyOn = ntfyConfigured(env);
+    if (!configured(env) && !ntfyOn) return json({ error: "Notifications are not configured. Add NTFY_TOPIC (or the VAPID secrets)." }, 500);
     const delay = Math.min(Math.max(parseInt(new URL(request.url).searchParams.get("delay") || "0", 10) || 0, 0), 20);
+    if (ntfyOn) {
+      const msg = { title: "ClientRadar test", message: "If you can read this, ntfy notifications work.", priority: 4, tags: ["white_check_mark"] };
+      if (delay > 0) {
+        ctx.waitUntil((async () => {
+          await new Promise((r) => setTimeout(r, delay * 1000));
+          await ntfyPublish(env, msg);
+        })());
+        return json({ ok: true, ntfy: true, scheduledInSeconds: delay });
+      }
+      const r = await ntfyPublish(env, msg);
+      return json({ ok: r.ok, ntfy: true, status: r.status });
+    }
     const payload = { title: "ClientRadar test", body: "If you can read this, push notifications work.", url: "/" };
     if (delay > 0) {
       ctx.waitUntil((async () => {
