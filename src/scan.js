@@ -67,11 +67,29 @@ async function loadSettings(db) {
   return {
     keywords: parseList(m.keywords, DEFAULT_KEYWORDS, false),
     excluded: parseList(m.excluded, DEFAULT_EXCLUDED, true),
-    minScore: m.min_score != null && Number.isFinite(min) ? min : DEFAULT_MIN_SCORE,
+    // Never go below the default: scores under 4 are the 'Low' junk leads.
+    minScore: Math.max(DEFAULT_MIN_SCORE, m.min_score != null && Number.isFinite(min) ? min : DEFAULT_MIN_SCORE),
     offset: Number(m.rotate_offset) || 0,
     phraseLastRun: last,
     deleted: (() => { try { const d = JSON.parse(m.deleted_uris || "[]"); return new Set(Array.isArray(d) ? d : []); } catch (e) { return new Set(); } })()
   };
+}
+
+// One-time clean-up: when the scoring rules change, re-check posts already saved (except ones you saved yourself)
+// so old junk leads disappear. Raise SCORING_VERSION whenever scoring.js changes in a big way.
+const SCORING_VERSION = "2";
+async function rescoreOnce(db, cfg) {
+  const row = await db.prepare("SELECT value FROM settings WHERE key = 'scoring_version'").first();
+  if (row && row.value === SCORING_VERSION) return;
+  const { results } = await db.prepare("SELECT id, text, author_name FROM posts WHERE is_saved = 0 LIMIT 1000").all();
+  const stmts = [];
+  for (const r of results) {
+    const s = scorePost(r.text, cfg, { author_name: r.author_name });
+    if (s.skip || s.score <= 0 || s.score < cfg.minScore) stmts.push(db.prepare("DELETE FROM posts WHERE id = ?1").bind(r.id));
+    else stmts.push(db.prepare("UPDATE posts SET intent = ?1, score = ?2, category = ?3, reasons = ?4 WHERE id = ?5").bind(s.intent, s.score, s.category, JSON.stringify(s.reasons), r.id));
+  }
+  for (let i = 0; i < stmts.length; i += 100) await db.batch(stmts.slice(i, i + 100));
+  await db.prepare(UPSERT).bind("scoring_version", SCORING_VERSION).run();
 }
 
 async function searchPage(jwt, phrase, cursor, since) {
@@ -128,6 +146,7 @@ export async function runScan(env) {
 
   try {
     const cfg = await loadSettings(db);
+    try { await rescoreOnce(db, cfg); } catch (e) { errors.push("cleanup: " + String(e && e.message ? e.message : e).slice(0, 100)); }
     const session = await getSession(env, db);
     if (session.error) throw new Error(session.error);
 
