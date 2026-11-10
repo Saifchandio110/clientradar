@@ -32,7 +32,7 @@ function checkAdmin(request, env) {
 async function stats(env) {
   const db = env.DB;
   const r = await db.batch([
-    db.prepare("SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END), 0) AS unread, COALESCE(SUM(CASE WHEN intent = 'high' THEN 1 ELSE 0 END), 0) AS high, COALESCE(SUM(is_saved), 0) AS saved FROM posts"),
+    db.prepare("SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END), 0) AS unread, COALESCE(SUM(CASE WHEN intent = 'high' THEN 1 ELSE 0 END), 0) AS high, COALESCE(SUM(is_saved), 0) AS saved FROM posts WHERE score >= " + DEFAULT_MIN_SCORE + " OR is_saved = 1"),
     db.prepare("SELECT * FROM scan_runs WHERE status = 'ok' ORDER BY id DESC LIMIT 1"),
     db.prepare("SELECT * FROM scan_runs WHERE status = 'error' ORDER BY id DESC LIMIT 1")
   ]);
@@ -40,7 +40,7 @@ async function stats(env) {
 }
 
 async function listPosts(env, url) {
-  const where = ["(created_at >= ? OR is_saved = 1)"];
+  const where = ["(created_at >= ? OR is_saved = 1)", "(score >= " + DEFAULT_MIN_SCORE + " OR is_saved = 1)"];
   const args = [new Date(Date.now() - 7 * 24 * 3600000).toISOString()];
   const intent = url.searchParams.get("intent");
   if (intent === "high" || intent === "medium" || intent === "low") { where.push("intent = ?"); args.push(intent); }
@@ -111,7 +111,7 @@ async function getSettings(env) {
   return {
     keywords: parseList(m.keywords, DEFAULT_KEYWORDS, false),
     excluded: parseList(m.excluded, DEFAULT_EXCLUDED, true),
-    min_score: m.min_score != null && Number.isFinite(min) ? min : DEFAULT_MIN_SCORE
+    min_score: Math.max(DEFAULT_MIN_SCORE, m.min_score != null && Number.isFinite(min) ? min : DEFAULT_MIN_SCORE)
   };
 }
 
